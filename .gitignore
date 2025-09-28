@@ -1,0 +1,131 @@
+﻿# === Build directory (explicit) ===
+# CLion/Visual Studio CMake build directory you specified
+cmake-build-debug-visual-studio/
+
+# === Common build dirs ===
+build/
+_build/
+out/
+bin/
+obj/
+
+# === CMake artifacts ===
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+install_manifest.txt
+*.cmake
+
+# Ignore all other CMake-generated build directories
+cmake-build-*/
+
+# === Visual Studio files ===
+*.sln
+*.vcxproj*
+*.vcxproj.filters
+*.vcxproj.user
+*.user
+*.suo
+*.ncb
+*.opensdf
+*.sdf
+*.ipch
+*.VC.db
+*.VC.opendb
+
+# Visual Studio build output / intermediates
+*.obj
+*.o
+*.dll
+*.exe
+*.lib
+*.pdb
+*.ilk
+*.idb
+*.ipdb
+*.exp
+
+# === macOS / Windows OS files ===
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# === JetBrains CLion / IntelliJ ===
+# Ignore full .idea by default (keeps no personal workspace files)
+.idea/
+# keep these if you intentionally want to version them:
+# !.idea/codeStyles/
+# !.idea/misc.xml
+
+# Module files
+*.iml
+
+# === VS Code (if used) ===
+.vscode/
+*.code-workspace
+
+# === Package managers / caches / deps ===
+# vcpkg
+vcpkg_installed/
+vcpkg/
+buildtrees/
+packages/
+
+# Conan
+conaninfo.txt
+conanbuildinfo.*
+.conan/
+.*conan.*
+
+# Meson / Ninja
+meson-private/
+*.ninja
+
+# === Embree / SDL2 / GLM build outputs and local libs ===
+# Ignore typical embree build dirs and compiled libs (but not embree source if you want to commit it)
+**/embree-build/
+**/embree/build/
+**/embree/Build/
+**/embree/*.o
+**/embree/*.obj
+**/embree/*.so
+**/embree/*.dll
+**/embree/*.lib
+**/embree/*.dylib
+# SDL2 / glm local build directories
+**/SDL2/build/
+**/sdl2-build/
+**/glm/build/
+**/third_party/*/build/
+
+# === Binary and library files ===
+*.so
+*.dylib
+*.a
+*.lib
+*.la
+*.lo
+
+# === Generated assets and caches ===
+*.pyc
+__pycache__/
+*.cache
+*.log
+*.tmp
+*.swp
+*~.nib
+
+# === Debug / crash dumps ===
+*.dmp
+*.dump
+
+# === Test
