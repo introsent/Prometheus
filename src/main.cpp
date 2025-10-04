@@ -6,8 +6,9 @@
 #if defined(__has_include)
 #  if __has_include(<SDL.h>)
 #    include <SDL.h>
-#  elif __has_include(<SDL2/SDL.h>)
-#    include <SDL2/SDL.h>
+#  elif __has_include(<SDL3/SDL.h>)
+#    include <SDL3/SDL.h>
+#    include <SDL3/SDL_main.h>
 #  else
 #    error "SDL2 header not found"
 #  endif
@@ -99,40 +100,42 @@ int main(int argc, char** argv)
     std::cout << "[Embree] Embree headers not available at compile-time; embedding test skipped.\n";
 #endif
 
-    // --------------------------
-    // SDL2 test
-    // --------------------------
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        std::cerr << "[SDL2] SDL_Init failed: " << SDL_GetError() << "\n";
-        return 1;
-    }
-    std::cout << "[SDL2] SDL initialized\n";
+    SDL_Window *win = NULL;
+    SDL_Renderer *renderer = NULL;
+    int width = 640, height = 420;
+    bool loopShouldStop = false;
 
-    SDL_Window* window = SDL_CreateWindow("Prometheus test window",
-                                          SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                                          640, 480,
-                                          SDL_WINDOW_SHOWN);
-    if (!window) {
-        std::cerr << "[SDL2] SDL_CreateWindow failed: " << SDL_GetError() << "\n";
-        SDL_Quit();
-        return 1;
+    if (SDL_Init(SDL_INIT_VIDEO) == 1)
+    {
+        std::cout << "[SDL3] SDL_Init() succeeded\n";
     }
 
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    if (!renderer) {
-        std::cerr << "[SDL2] SDL_CreateRenderer failed: " << SDL_GetError() << "\n";
-    } else {
-        SDL_SetRenderDrawColor(renderer, 80, 120, 160, 255);
+    win = SDL_CreateWindow("Prometheus", width, height, 0);
+
+    renderer = SDL_CreateRenderer(win, NULL);
+
+    while (!loopShouldStop)
+    {
+        SDL_Event event;
+        while (SDL_PollEvent(&event))
+        {
+            switch (event.type)
+            {
+                case SDL_EVENT_QUIT:
+                    loopShouldStop = true;
+                    break;
+                default: ;
+            }
+        }
+
         SDL_RenderClear(renderer);
         SDL_RenderPresent(renderer);
-        std::this_thread::sleep_for(std::chrono::milliseconds(1500));
     }
 
-    if (renderer) SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-    std::cout << "[SDL2] shutdown cleanly\n";
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(win);
 
-    std::cout << "=== done ===\n";
+    SDL_Quit();
+
     return 0;
 }

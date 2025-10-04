@@ -11,7 +11,7 @@ include(FetchContent)
 
 # Options (user can turn vendoring off)
 option(USE_VENDORED_EMBREE "Download & build Embree from source when not found" ON)
-option(USE_VENDORED_SDL2   "Download & build SDL2 from source when not found" ON) # potentially SDL3 in the future
+option(USE_VENDORED_SDL3 "Download & build SDL3 from source when not found" ON)
 option(USE_VENDORED_GLM    "Download & use GLM from source when not found" ON)
 
 # ------------------------
@@ -49,26 +49,29 @@ if(NOT embree_FOUND AND USE_VENDORED_EMBREE)
     FetchContent_MakeAvailable(embree)
 endif()
 
-# SDL2
-find_package(SDL2 CONFIG QUIET)
-if(NOT SDL2_FOUND)
-    find_package(SDL2 QUIET)
+# SDL3
+find_package(SDL3 CONFIG QUIET)
+if(NOT SDL3_FOUND)
+    find_package(SDL3 QUIET) # plain mode fallback
 endif()
 
-if(NOT SDL2_FOUND AND USE_VENDORED_SDL2)
-    message(STATUS "SDL2 not found on system: fetching SDL (release-2.26.5) into the build tree")
+if(NOT SDL3_FOUND AND USE_VENDORED_SDL3)
+    message(STATUS "SDL3 not found on system: fetching SDL (release-3.2.20) into the build tree")
+    include(FetchContent)
     FetchContent_Declare(
-            sdl2
+            sdl3
             GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-            GIT_TAG        release-2.26.5
+            GIT_TAG        release-3.2.24
             GIT_SHALLOW    TRUE
     )
 
-    set(BUILD_SHARED_LIBS ON CACHE BOOL "Build SDL2 as shared library" FORCE)
+    # Configure vendored SDL3 options (tweak if you want different features)
+    set(BUILD_SHARED_LIBS ON CACHE BOOL "Build SDL3 as shared library" FORCE)
     set(SDL_TEST OFF CACHE BOOL "Disable SDL tests" FORCE)
-    set(SDL_VULKAN OFF CACHE BOOL "Disable Vulkan" FORCE)
+    # keep Vulkan off if you don't need it
+    set(SDL_VULKAN OFF CACHE BOOL "Disable Vulkan support" FORCE)
 
-    FetchContent_MakeAvailable(sdl2)
+    FetchContent_MakeAvailable(sdl3)
 endif()
 
 # GLM: header-only
@@ -115,21 +118,19 @@ else()
     endif()
 endif()
 
-# Link SDL2
-if(TARGET SDL2::SDL2)
-    target_link_libraries(Prometheus PRIVATE SDL2::SDL2)
-elseif(TARGET SDL2)
-    target_link_libraries(Prometheus PRIVATE SDL2)
+# Link SDL3
+if(TARGET SDL3::SDL3)
+    target_link_libraries(Prometheus PRIVATE SDL3::SDL3)
 else()
-    if(SDL2_FOUND)
-        if(DEFINED SDL2_LIBRARIES)
-            target_link_libraries(Prometheus PRIVATE ${SDL2_LIBRARIES})
+    if(SDL3_FOUND)
+        if(DEFINED SDL3_LIBRARIES)
+            target_link_libraries(Prometheus PRIVATE ${SDL3_LIBRARIES})
         endif()
-        if(DEFINED SDL2_INCLUDE_DIRS)
-            target_include_directories(Prometheus PRIVATE ${SDL2_INCLUDE_DIRS})
+        if(DEFINED SDL3_INCLUDE_DIRS)
+            target_include_directories(Prometheus PRIVATE ${SDL3_INCLUDE_DIRS})
         endif()
     else()
-        message(WARNING "SDL2 not found. Window/display functionality will be unavailable.")
+        message(WARNING "SDL3 not found. Window/display functionality will be unavailable.")
     endif()
 endif()
 
@@ -155,20 +156,13 @@ else()
     target_compile_options(Prometheus PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-# Copy SDL2.dll next to Prometheus.exe if SDL2 is a shared target
-if(TARGET SDL2::SDL2 OR TARGET SDL2)
-    set(SDL2_TARGET_NAME "")
-    if(TARGET SDL2::SDL2)
-        set(SDL2_TARGET_NAME SDL2::SDL2)
-    else()
-        set(SDL2_TARGET_NAME SDL2)
-    endif()
-
+# If SDL3 is a shared target, copy runtime DLL next to exe (Windows)
+if(TARGET SDL3::SDL3)
     add_custom_command(TARGET Prometheus POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:${SDL2_TARGET_NAME}>
+            $<TARGET_FILE:SDL3::SDL3>
             $<TARGET_FILE_DIR:Prometheus>
-            COMMENT "Copying SDL2 DLL to executable output directory"
+            COMMENT "Copying SDL3 runtime to executable output directory"
     )
 endif()
 
