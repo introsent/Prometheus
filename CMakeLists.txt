@@ -94,6 +94,15 @@ endif()
 
 add_executable(Prometheus
         src/main.cpp
+        src/geometries/geometry.cpp
+        src/geometries/geometry.h
+        src/geometries/triangle.cpp
+        src/geometries/triangle.h
+        src/init/embree_scene.cpp
+        src/init/embree_scene.h
+        src/init/embree_device.cpp
+        src/init/embree_device.h
+        src/structs/vertex.h
 )
 
 # Ensure GLM experimental features allowed for all compilation units of this target
