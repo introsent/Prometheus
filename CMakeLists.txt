@@ -105,6 +105,8 @@ add_executable(Prometheus
         src/structs/vertex.h
         src/ray/ray.h
         src/ray/hit_result.h
+        src/ray/ray_tracer.cpp
+        src/ray/ray_tracer.h
 )
 
 # Ensure GLM experimental features allowed for all compilation units of this target

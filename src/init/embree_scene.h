@@ -11,7 +11,7 @@ public:
 
     void commit();
     void release();
-    [[nodiscard]] RTCScene getScene() const;
+    [[nodiscard]] RTCScene handle() const;
 
 private:
     RTCScene m_scene = nullptr;

@@ -15,6 +15,6 @@ void EmbreeScene::release() {
     rtcReleaseScene(m_scene);
 }
 
-RTCScene EmbreeScene::getScene() const {
+RTCScene EmbreeScene::handle() const {
     return m_scene;
 }

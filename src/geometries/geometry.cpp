@@ -20,7 +20,7 @@ void Geometry::commit() const {
 }
 
 void Geometry::attach(const EmbreeScene* embreeScenePtr) const {
-    rtcAttachGeometry(embreeScenePtr->getScene(), m_geometry);
+    rtcAttachGeometry(embreeScenePtr->handle(), m_geometry);
 }
 
 void Geometry::release() const {
