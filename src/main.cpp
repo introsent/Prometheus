@@ -26,7 +26,7 @@ int main()
     scenePtr->commit();
 
     const auto rayTracerPtr = std::make_unique<RayTracer>(scenePtr->handle());
-    Ray ray{glm::vec3(0, 0, -1), glm::vec3(0, 0, 1)};
+    constexpr Ray ray{glm::vec3(0, 0, -1), glm::vec3(0, 0, 1)};
 
     if (const HitResult hit = rayTracerPtr->intersect(ray); hit.didHit) {
         std::cout << "Intersection at t = " << hit.distance
