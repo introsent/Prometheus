@@ -10,7 +10,7 @@ public:
     EmbreeDevice();
 
     void release();
-    RTCDevice getDevice() const;
+    [[nodiscard]] RTCDevice handle() const;
 private:
     RTCDevice m_device = nullptr;
 };

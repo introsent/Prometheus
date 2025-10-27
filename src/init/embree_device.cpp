@@ -12,7 +12,7 @@ void EmbreeDevice::release() {
     rtcReleaseDevice(m_device);
 }
 
-RTCDevice EmbreeDevice::getDevice() const {
+RTCDevice EmbreeDevice::handle() const {
     return m_device;
 }
 

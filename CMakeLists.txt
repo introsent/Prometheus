@@ -115,6 +115,15 @@ add_executable(Prometheus
         src/camera/camera.h
 )
 
+target_include_directories(${PROJECT_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/camera
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/geometries
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/init
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ray
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/structs
+)
+
 # Ensure GLM experimental features allowed for all compilation units of this target
 target_compile_definitions(Prometheus PRIVATE GLM_ENABLE_EXPERIMENTAL SDL_MAIN_HANDLED)
 

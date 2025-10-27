@@ -5,7 +5,7 @@
 #include "sphere.h"
 
 Sphere::Sphere(const glm::vec3& center, float radius, const EmbreeDevice* devicePtr)
-    : Geometry(RTC_GEOMETRY_TYPE_SPHERE_POINT, devicePtr->getDevice()) {
+    : Geometry(RTC_GEOMETRY_TYPE_SPHERE_POINT, devicePtr->handle()) {
 
     struct Sphere4 {
         float x, y, z, r;

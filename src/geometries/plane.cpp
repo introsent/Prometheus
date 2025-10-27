@@ -8,29 +8,29 @@
 #include "glm/ext/quaternion_geometric.hpp"
 
 Plane::Plane(const glm::vec3& origin, const glm::vec3& normal, const EmbreeDevice* devicePtr)
-    : Geometry(RTC_GEOMETRY_TYPE_QUAD, devicePtr->getDevice()) {
+    : Geometry(RTC_GEOMETRY_TYPE_QUAD, devicePtr->handle()) {
 
     // Create a large quad to represent the plane (ideally infinite, but we simulate it)
-    const float planeSize = 10000.f;
+    constexpr float planeSize = 10000.f;
 
     // Calculate perpendicular vectors for the plane
-    glm::vec3 u, v;
+    glm::vec3 u;
     if (std::abs(normal.x) > 0.1f) {
         u = glm::normalize(glm::cross(glm::vec3(0, 1, 0), normal));
     } else {
         u = glm::normalize(glm::cross(glm::vec3(1, 0, 0), normal));
     }
-    v = glm::normalize(glm::cross(normal, u));
+    const glm::vec3 v = glm::normalize(glm::cross(normal, u));
 
     // Create quad vertices
     auto* vertices = static_cast<float*>(rtcSetNewGeometryBuffer(m_geometry,
         RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3,
         3 * sizeof(float), 4));
 
-    glm::vec3 p0 = origin - u * planeSize - v * planeSize;
-    glm::vec3 p1 = origin + u * planeSize - v * planeSize;
-    glm::vec3 p2 = origin + u * planeSize + v * planeSize;
-    glm::vec3 p3 = origin - u * planeSize + v * planeSize;
+    const glm::vec3 p0 = origin - u * planeSize - v * planeSize;
+    const glm::vec3 p1 = origin + u * planeSize - v * planeSize;
+    const glm::vec3 p2 = origin + u * planeSize + v * planeSize;
+    const glm::vec3 p3 = origin - u * planeSize + v * planeSize;
 
     vertices[0] = p0.x; vertices[1] = p0.y; vertices[2] = p0.z;
     vertices[3] = p1.x; vertices[4] = p1.y; vertices[5] = p1.z;
