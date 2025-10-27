@@ -31,13 +31,19 @@ if(NOT embree_FOUND AND USE_VENDORED_EMBREE)
     )
 
     # Simple vendored build: disable ISPC, tutorials, SYCL and install step
-    set(EMBREE_ISPC_SUPPORT OFF CACHE BOOL "Disable ISPC to avoid ISPC tool requirement" FORCE)
-    set(EMBREE_TUTORIALS    OFF CACHE BOOL "Don't build embree tutorials/examples" FORCE)
-    set(EMBREE_SYCL_SUPPORT OFF CACHE BOOL "Disable SYCL support for vendored build" FORCE)
-    set(EMBREE_INSTALL      OFF CACHE BOOL "Don't install embree during vendored build" FORCE)
+    set(EMBREE_ISPC_SUPPORT OFF CACHE BOOL "Disable ISPC" FORCE)
+    set(EMBREE_TUTORIALS    OFF CACHE BOOL "Don't build examples" FORCE)
+    set(EMBREE_SYCL_SUPPORT OFF CACHE BOOL "Disable SYCL" FORCE)
+    set(EMBREE_INSTALL      OFF CACHE BOOL "Don't install embree" FORCE)
+    set(EMBREE_TASKING_SYSTEM "INTERNAL" CACHE STRING "Use internal tasking" FORCE)
 
-    # Use internal tasking to avoid requiring oneTBB
-    set(EMBREE_TASKING_SYSTEM "INTERNAL" CACHE STRING "Embree tasking system (TBB | INTERNAL)" FORCE)
+    # Restrict ISAs: enable only SSE4.2; disable AVX/AVX2/AVX512 to avoid building extra kernels:
+    set(EMBREE_ISA_SSE2     ON  CACHE BOOL "Enable SSE2" FORCE)
+    set(EMBREE_ISA_SSE42    ON  CACHE BOOL "Enable SSE4.2" FORCE)
+    set(EMBREE_ISA_AVX      OFF CACHE BOOL "Disable AVX" FORCE)
+    set(EMBREE_ISA_AVX2     OFF CACHE BOOL "Disable AVX2" FORCE)
+    set(EMBREE_ISA_AVX512SKX OFF CACHE BOOL "Disable AVX512 SKX" FORCE)
+    set(EMBREE_ISA_AVX512KNL OFF CACHE BOOL "Disable AVX512 KNL" FORCE)
 
     # Avoid building shared libraries that can add Unix only linker flags which MinGW doesn't understand.
     if(MINGW OR (WIN32 AND CMAKE_C_COMPILER_ID STREQUAL "GNU"))
@@ -85,6 +91,9 @@ if(NOT glm_FOUND AND USE_VENDORED_GLM)
             GIT_TAG        1.0.1
             GIT_SHALLOW    TRUE
     )
+    # Don't let GLM's CMakeLists try to build libraries
+    set(GLM_BUILD_LIBRARY OFF CACHE BOOL "Don't build GLM as a library" FORCE)
+    set(GLM_BUILD_TESTS OFF CACHE BOOL "Don't build GLM tests" FORCE)
     FetchContent_MakeAvailable(glm)
 endif()
 
@@ -118,6 +127,8 @@ add_executable(Prometheus
         src/structs/material.h
         src/render/scene_manager.cpp
         src/render/scene_manager.h
+        src/render/timer.cpp
+        src/render/timer.h
 )
 
 target_include_directories(Prometheus PRIVATE
@@ -167,18 +178,21 @@ else()
     endif()
 endif()
 
-# GLM (header only)
+# GLM (header-only - just add include directories, never link)
 if(TARGET glm::glm)
+    # Modern GLM installation with proper interface target
     target_link_libraries(Prometheus PRIVATE glm::glm)
+elseif(glm_FOUND)
+    # Found via find_package - add include directories only
+    if(DEFINED GLM_INCLUDE_DIRS)
+        target_include_directories(Prometheus PRIVATE ${GLM_INCLUDE_DIRS})
+    elseif(DEFINED GLM_INCLUDE_DIR)
+        target_include_directories(Prometheus PRIVATE ${GLM_INCLUDE_DIR})
+    endif()
 else()
-    if(glm_FOUND)
-        if(DEFINED GLM_INCLUDE_DIR)
-            target_include_directories(Prometheus PRIVATE ${GLM_INCLUDE_DIR})
-        elseif(DEFINED GLM_INCLUDE_DIRS)
-            target_include_directories(Prometheus PRIVATE ${GLM_INCLUDE_DIRS})
-        endif()
-    else()
-        message(WARNING "glm not found - math helpers will be unavailable.")
+    # FetchContent case - manually add include directory
+    if(DEFINED glm_SOURCE_DIR)
+        target_include_directories(Prometheus PRIVATE ${glm_SOURCE_DIR})
     endif()
 endif()
 
