@@ -1,25 +1,26 @@
 ﻿//
 // Created by minaj on 10/4/2025.
 //
-
 #include "triangle.h"
 
-Triangle::Triangle(const std::vector<Vertex>& vertices, const EmbreeDevice* devicePtr)
-    : Geometry(RTC_GEOMETRY_TYPE_TRIANGLE, devicePtr->handle()) {
+Triangle::Triangle(const std::vector<Vertex>& vertices, const EmbreeDevice* devicePtr,
+                   CullingMode culling)
+    : Geometry(RTC_GEOMETRY_TYPE_TRIANGLE, devicePtr->handle())
+    , m_cullingMode(culling) {
 
     m_vertexBuffer = static_cast<float*>(rtcSetNewGeometryBuffer(m_geometry,
         RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3,
         3 * sizeof(float), vertices.size()));
-    FillVertexBuffer(vertices);
+    fillVertexBuffer(vertices);
 
     const unsigned triCount = vertices.size() / 3;
     m_indexBuffer = static_cast<unsigned*>(rtcSetNewGeometryBuffer(m_geometry,
         RTC_BUFFER_TYPE_INDEX, 0, RTC_FORMAT_UINT3,
         3 * sizeof(unsigned), triCount));
-    FillIndexBuffer(vertices);
+    fillIndexBuffer(vertices);
 }
 
-void Triangle::FillVertexBuffer(const std::vector<Vertex>& vertices) {
+void Triangle::fillVertexBuffer(const std::vector<Vertex>& vertices) const {
     if (!m_vertexBuffer) return;
     for (size_t i = 0; i < vertices.size(); ++i) {
         m_vertexBuffer[i * 3 + 0] = vertices[i].x;
@@ -28,11 +29,15 @@ void Triangle::FillVertexBuffer(const std::vector<Vertex>& vertices) {
     }
 }
 
-void Triangle::FillIndexBuffer(const std::vector<Vertex>& vertices) {
-    const unsigned triCount = static_cast<unsigned>(vertices.size() / 3);
+void Triangle::fillIndexBuffer(const std::vector<Vertex>& vertices) const {
+    const auto triCount = static_cast<unsigned>(vertices.size() / 3);
     for (unsigned t = 0; t < triCount; ++t) {
         m_indexBuffer[t * 3 + 0] = t * 3 + 0;
         m_indexBuffer[t * 3 + 1] = t * 3 + 1;
         m_indexBuffer[t * 3 + 2] = t * 3 + 2;
     }
+}
+
+CullingMode Triangle::getCullingMode() const {
+    return m_cullingMode;
 }

@@ -85,14 +85,6 @@ void createReferenceScene(SceneManager* pScene)
     const unsigned char matLambert_White = pScene->addMaterial(
         new Material_Lambert(colors::white, 1.f));
 
-    // Lambert-Phong materials (for triangles if needed)
-    const unsigned char matLambertPhong1 = pScene->addMaterial(
-        new Material_LambertPhong(colors::blue, 0.5f, 0.5f, 3.f));
-    const unsigned char matLambertPhong2 = pScene->addMaterial(
-        new Material_LambertPhong(colors::blue, 0.5f, 0.5f, 15.f));
-    const unsigned char matLambertPhong3 = pScene->addMaterial(
-        new Material_LambertPhong(colors::blue, 0.5f, 0.5f, 50.f));
-
     // Room planes
     pScene->addPlane({0.f, 0.f, 10.f}, {0.f, 0.f, -1.f}, matLambert_GrayBlue);   // BACK
     pScene->addPlane({0.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, matLambert_GrayBlue);     // BOTTOM
@@ -117,15 +109,15 @@ void createReferenceScene(SceneManager* pScene)
         {-1.f, 4.5f, 0.f},   // bottom-right
         {-2.5f, 4.5f, 0.f}   // bottom-left
     };
-    pScene->addTriangle(triangle1, matLambert_White);
+    pScene->addTriangle(triangle1, matLambert_White, CullingMode::BACK_FACE);
 
-    // Triangle 2: Front-face culling (reversed winding)
+    // Triangle 2: Front-face culling
     std::vector<Vertex> triangle2 = {
         {0.f, 6.f, 0.f},     // top
         {-0.75f, 4.5f, 0.f}, // bottom-left
         {0.75f, 4.5f, 0.f}   // bottom-right
     };
-    pScene->addTriangle(triangle2, matLambert_White);
+    pScene->addTriangle(triangle2, matLambert_White, CullingMode::FRONT_FACE);
 
     // Triangle 3: No culling
     std::vector<Vertex> triangle3 = {
@@ -133,7 +125,7 @@ void createReferenceScene(SceneManager* pScene)
         {1.75f, 4.5f, 0.f},  // bottom-right
         {2.5f, 4.5f, 0.f}    // bottom-left
     };
-    pScene->addTriangle(triangle3, matLambert_White);
+    pScene->addTriangle(triangle3, matLambert_White, CullingMode::NONE);
 
     // Lights
     pScene->addLight(new Light(

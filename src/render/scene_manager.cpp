@@ -53,19 +53,18 @@ void SceneManager::addPlane(const glm::vec3& origin, const glm::vec3& normal, un
     m_geometries.push_back(std::move(plane));
 }
 
-void SceneManager::addTriangle(const std::vector<Vertex>& vertices, unsigned char materialId) {
-    auto triangle = std::make_unique<Triangle>(vertices, m_devicePtr.get());
+void SceneManager::addTriangle(const std::vector<Vertex> &vertices, unsigned char materialId, CullingMode culling) {
+    auto triangle = std::make_unique<Triangle>(vertices, m_devicePtr.get(), culling);
     triangle->commit();
 
-    // Get the geomID when attaching
     unsigned geomID = rtcAttachGeometry(m_scenePtr->handle(), triangle->getGeometry());
 
-    // Store the geometry type
     m_geometryTypes[geomID] = triangle->getType();
-
+    m_cullingModes[geomID] = culling;  // Store culling mode
     m_geometryMaterials.push_back(materialId);
     m_geometries.push_back(std::move(triangle));
 }
+
 
 void SceneManager::addLight(Light* light) {
     m_lights.push_back(std::unique_ptr<Light>(light));
@@ -101,4 +100,9 @@ RTCGeometryType SceneManager::getGeometryType(unsigned int geomID) const {
         return it->second;
     }
     return RTC_GEOMETRY_TYPE_TRIANGLE; // Default fallback
+}
+
+CullingMode SceneManager::getCullingMode(unsigned geomID) const {
+    const auto it = m_cullingModes.find(geomID);
+    return (it != m_cullingModes.end()) ? it->second : CullingMode::NONE;
 }

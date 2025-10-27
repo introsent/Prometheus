@@ -17,7 +17,6 @@ RayTracer::RayTracer(const SceneManager* sceneManager)
 HitResult RayTracer::intersect(const Ray &ray) const {
     HitResult result;
 
-    // Stack-allocate and use struct initialization
     RTCRayHit rayHit{
         .ray = {
             .org_x = ray.origin.x,
@@ -44,19 +43,54 @@ HitResult RayTracer::intersect(const Ray &ray) const {
 
     rtcIntersect1(m_scene, &rayHit, &args);
 
-    // Early exit if no hit
     if (rayHit.hit.geomID == RTC_INVALID_GEOMETRY_ID) {
         return result;
     }
 
+    // Check culling BEFORE computing full normal
+    CullingMode culling = m_sceneManager->getCullingMode(rayHit.hit.geomID);
+    if (culling != CullingMode::NONE) {
+        // Fast culling check, compute unnormalized normal
+        RTCGeometry geom = rtcGetGeometry(m_scene, rayHit.hit.geomID);
+        const RTCGeometryType geomType = m_sceneManager->getGeometryType(rayHit.hit.geomID);
+
+        if (geomType == RTC_GEOMETRY_TYPE_TRIANGLE || geomType == RTC_GEOMETRY_TYPE_QUAD) {
+            const auto* vertices = static_cast<const float*>(
+                rtcGetGeometryBufferData(geom, RTC_BUFFER_TYPE_VERTEX, 0));
+            const auto* indices = static_cast<const unsigned*>(
+                rtcGetGeometryBufferData(geom, RTC_BUFFER_TYPE_INDEX, 0));
+
+            const unsigned stride = (geomType == RTC_GEOMETRY_TYPE_QUAD) ? 4 : 3;
+            const unsigned i0 = indices[rayHit.hit.primID * stride + 0];
+            const unsigned i1 = indices[rayHit.hit.primID * stride + 1];
+            const unsigned i2 = indices[rayHit.hit.primID * stride + 2];
+
+            const float* v0 = vertices + i0 * 3;
+            const float* v1 = vertices + i1 * 3;
+            const float* v2 = vertices + i2 * 3;
+
+            // Compute cross product (unnormalized is fine for sign check)
+            const glm::vec3 edge1(v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]);
+            const glm::vec3 edge2(v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]);
+            const glm::vec3 normal = glm::cross(edge1, edge2);
+
+            const float dot = glm::dot(normal, ray.direction);
+
+            // Cull based on face orientation
+            if ((culling == CullingMode::BACK_FACE && dot > 0.0f) ||
+                (culling == CullingMode::FRONT_FACE && dot < 0.0f)) {
+                return result; // Return no hit (culled)
+            }
+        }
+    }
+
+    // Hit passed culling test - fill result
     result.didHit = true;
     result.distance = rayHit.ray.tfar;
     result.geomID = rayHit.hit.geomID;
     result.primID = rayHit.hit.primID;
     result.u = rayHit.hit.u;
     result.v = rayHit.hit.v;
-
-    // Fused multiply-add for hit position
     result.origin = ray.origin + ray.direction * result.distance;
     result.normal = computeNormal(result, ray);
 
@@ -106,25 +140,68 @@ void RayTracer::intersectPacket16(const std::vector<Ray> &rays, std::vector<HitR
 
     RTCIntersectArguments args{};
     rtcInitIntersectArguments(&args);
-    args.context = const_cast<RTCRayQueryContext*>(&m_rqctx);
+    args.context = &m_rqctx;
 
     rtcIntersect16(valid, m_scene, &rayhit, &args);
 
-    // Gather results - minimize branching
+    // Gather results with culling check
     for (size_t i = 0; i < N; ++i) {
         HitResult& hr = results[i];
         const bool hit = (rayhit.hit.geomID[i] != RTC_INVALID_GEOMETRY_ID);
 
-        hr.didHit = hit;
+        hr.didHit = false;
 
         if (hit) {
-            hr.distance = rayhit.ray.tfar[i];
-            hr.geomID = rayhit.hit.geomID[i];
-            hr.primID = rayhit.hit.primID[i];
-            hr.u = rayhit.hit.u[i];
-            hr.v = rayhit.hit.v[i];
-            hr.origin = rays[i].origin + rays[i].direction * hr.distance;
-            hr.normal = computeNormal(hr, rays[i]);
+            // Check culling BEFORE computing full results
+            CullingMode culling = m_sceneManager->getCullingMode(rayhit.hit.geomID[i]);
+            bool culled = false;
+
+            if (culling != CullingMode::NONE) {
+                RTCGeometry geom = rtcGetGeometry(m_scene, rayhit.hit.geomID[i]);
+                const RTCGeometryType geomType = m_sceneManager->getGeometryType(rayhit.hit.geomID[i]);
+
+                if (geomType == RTC_GEOMETRY_TYPE_TRIANGLE || geomType == RTC_GEOMETRY_TYPE_QUAD) {
+                    const auto* vertices = static_cast<const float*>(
+                        rtcGetGeometryBufferData(geom, RTC_BUFFER_TYPE_VERTEX, 0));
+                    const auto* indices = static_cast<const unsigned*>(
+                        rtcGetGeometryBufferData(geom, RTC_BUFFER_TYPE_INDEX, 0));
+
+                    const unsigned stride = (geomType == RTC_GEOMETRY_TYPE_QUAD) ? 4 : 3;
+                    const unsigned primID = rayhit.hit.primID[i];
+                    const unsigned i0 = indices[primID * stride + 0];
+                    const unsigned i1 = indices[primID * stride + 1];
+                    const unsigned i2 = indices[primID * stride + 2];
+
+                    const float* v0 = vertices + i0 * 3;
+                    const float* v1 = vertices + i1 * 3;
+                    const float* v2 = vertices + i2 * 3;
+
+                    // Compute unnormalized normal
+                    const glm::vec3 edge1(v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]);
+                    const glm::vec3 edge2(v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]);
+                    const glm::vec3 normal = glm::cross(edge1, edge2);
+
+                    const float dot = glm::dot(normal, rays[i].direction);
+
+                    // Check if face should be culled
+                    if ((culling == CullingMode::BACK_FACE && dot > 0.0f) ||
+                        (culling == CullingMode::FRONT_FACE && dot < 0.0f)) {
+                        culled = true;
+                    }
+                }
+            }
+
+            // Only fill result if not culled
+            if (!culled) {
+                hr.didHit = true;
+                hr.distance = rayhit.ray.tfar[i];
+                hr.geomID = rayhit.hit.geomID[i];
+                hr.primID = rayhit.hit.primID[i];
+                hr.u = rayhit.hit.u[i];
+                hr.v = rayhit.hit.v[i];
+                hr.origin = rays[i].origin + rays[i].direction * hr.distance;
+                hr.normal = computeNormal(hr, rays[i]);
+            }
         }
     }
 }
@@ -147,14 +224,13 @@ bool RayTracer::isOccluded(const Ray& ray) const {
 
     RTCOccludedArguments args{};
     rtcInitOccludedArguments(&args);
-    args.context = const_cast<RTCRayQueryContext*>(&m_rqctx);
+    args.context = &m_rqctx;
 
     rtcOccluded1(m_scene, &rtcRay, &args);
 
     return rtcRay.tfar < 0.0f;
 }
 
-// Removed setupRay - now inlined
 
 glm::vec3 RayTracer::computeNormal(const HitResult& hit, const Ray& ray) const {
     const RTCGeometryType geomType = m_sceneManager->getGeometryType(hit.geomID);
