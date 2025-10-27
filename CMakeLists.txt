@@ -116,6 +116,8 @@ add_executable(Prometheus
         src/render/renderer.cpp
         src/render/renderer.h
         src/structs/material.h
+        src/render/scene_manager.cpp
+        src/render/scene_manager.h
 )
 
 target_include_directories(Prometheus PRIVATE
