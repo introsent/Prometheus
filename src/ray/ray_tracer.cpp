@@ -8,7 +8,6 @@
 
 RayTracer::RayTracer(RTCScene scene) : m_scene(scene)
 {
-
 }
 
 HitResult RayTracer::intersect(const Ray &ray) const {

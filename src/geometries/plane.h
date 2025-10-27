@@ -5,7 +5,7 @@
 #ifndef PLANE_H
 #define PLANE_H
 
-#include "../init/embree_device.h"
+#include "init/embree_device.h"
 #include "geometry.h"
 #include "glm/vec3.hpp"
 

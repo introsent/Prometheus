@@ -5,8 +5,8 @@
 #ifndef TRIANGLE_H
 #define TRIANGLE_H
 
-#include "../structs/vertex.h"
-#include "../geometries/geometry.h"
+#include "structs/vertex.h"
+#include "geometries/geometry.h"
 
 class Triangle : public Geometry {
 public:

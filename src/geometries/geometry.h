@@ -7,7 +7,7 @@
 
 #include <vector>
 
-#include "../init/embree_scene.h"
+#include "init/embree_scene.h"
 #include "embree4/rtcore.h"
 
 struct Vertex;

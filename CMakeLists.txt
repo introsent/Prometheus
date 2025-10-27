@@ -113,9 +113,11 @@ add_executable(Prometheus
         src/geometries/plane.h
         src/camera/camera.cpp
         src/camera/camera.h
+        src/render/renderer.cpp
+        src/render/renderer.h
 )
 
-target_include_directories(${PROJECT_NAME} PRIVATE
+target_include_directories(Prometheus PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/src/camera
         ${CMAKE_CURRENT_SOURCE_DIR}/src/geometries

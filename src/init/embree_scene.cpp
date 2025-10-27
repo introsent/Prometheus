@@ -4,7 +4,7 @@
 
 #include "embree_scene.h"
 EmbreeScene::EmbreeScene(const EmbreeDevice* devicePtr) {
-    m_scene = rtcNewScene(devicePtr->getDevice());
+    m_scene = rtcNewScene(devicePtr->handle());
 }
 
 void EmbreeScene::commit() {
