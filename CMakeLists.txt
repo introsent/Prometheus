@@ -129,6 +129,7 @@ add_executable(Prometheus
         src/render/scene_manager.h
         src/render/timer.cpp
         src/render/timer.h
+        src/structs/light.h
 )
 
 target_include_directories(Prometheus PRIVATE

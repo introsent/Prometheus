@@ -13,8 +13,8 @@ enum class MaterialType {
 
 struct Material {
     virtual ~Material() = default;
-    virtual MaterialType getType() const = 0;
-    virtual glm::vec3 getColor() const = 0;
+    [[nodiscard]] virtual MaterialType getType() const = 0;
+    [[nodiscard]] virtual glm::vec3 getColor() const = 0;
 };
 
 struct Material_SolidColor final : public Material {
@@ -22,8 +22,8 @@ struct Material_SolidColor final : public Material {
 
     explicit Material_SolidColor(const glm::vec3& color) : color(color) {}
 
-    MaterialType getType() const override { return MaterialType::SolidColor; }
-    glm::vec3 getColor() const override { return color; }
+    [[nodiscard]] MaterialType getType() const override { return MaterialType::SolidColor; }
+    [[nodiscard]] glm::vec3 getColor() const override { return color; }
 };
 
 namespace colors {

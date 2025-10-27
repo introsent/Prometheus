@@ -43,6 +43,12 @@ void SceneManager::addPlane(const glm::vec3& origin, const glm::vec3& normal, un
     m_geometries.push_back(std::move(plane));
 }
 
+void SceneManager::addLight(Light* light)
+{
+    m_lights.push_back(std::unique_ptr<Light>(light));
+}
+
+
 void SceneManager::commit() {
     m_scenePtr->commit();
 }
@@ -54,9 +60,17 @@ const Material* SceneManager::getMaterial(unsigned char materialId) const {
     return m_materials[0].get(); // Default to red
 }
 
+const Light * SceneManager::getLight(unsigned char lightId) const {
+    if (lightId < m_lights.size()) {
+        return m_lights[lightId].get();
+    }
+    return m_lights[0].get();
+}
+
 unsigned char SceneManager::getGeometryMaterial(unsigned int geomID) const {
     if (geomID < m_geometryMaterials.size()) {
         return m_geometryMaterials[geomID];
     }
     return 0; // Default material
 }
+

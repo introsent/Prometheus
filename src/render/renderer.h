@@ -28,8 +28,10 @@ public:
 private:
     void renderPixel(const Camera& camera, const SceneManager& scene,
                      const RayTracer& tracer, uint32_t pixelIndex);
-    glm::vec3 traceRay(const Ray& ray, const RayTracer& tracer, const SceneManager& scene);
-    SDL_Color toSDLColor(const glm::vec3& color);
+
+    static glm::vec3 traceRay(const Ray& ray, const RayTracer& tracer, const SceneManager& scene);
+
+    static SDL_Color toSDLColor(const glm::vec3& color);
 
     int m_width;
     int m_height;

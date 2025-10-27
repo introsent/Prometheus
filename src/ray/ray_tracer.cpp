@@ -32,6 +32,7 @@ HitResult RayTracer::intersect(const Ray &ray) const {
         result.primID = rayHit.hit.primID;
         result.u = rayHit.hit.u;
         result.v = rayHit.hit.v;
+        result.origin = ray.origin + ray.direction * result.distance;
     }
 
     return result;

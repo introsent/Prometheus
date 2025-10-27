@@ -25,7 +25,7 @@ bool Renderer::initialize() {
         return false;
     }
 
-    m_window = SDL_CreateWindow("Embree Ray Tracer", m_width, m_height, 0);
+    m_window = SDL_CreateWindow("Prometheus", m_width, m_height, 0);
     if (!m_window) {
         std::cerr << "Window creation failed: " << SDL_GetError() << std::endl;
         return false;
@@ -114,9 +114,26 @@ bool Renderer::shouldQuit() {
 
 glm::vec3 Renderer::traceRay(const Ray& ray, const RayTracer& tracer, const SceneManager& scene) {
     if (const HitResult hit = tracer.intersect(ray); hit.didHit) {
+
         const unsigned char matId = scene.getGeometryMaterial(hit.geomID);
         const Material* mat = scene.getMaterial(matId);
-        return mat->getColor();
+        glm::vec3 matColor = mat->getColor();
+
+        const auto& lights = scene.getLights();
+
+
+        for (const auto& pLight : lights) {
+            // Configure light
+            glm::vec3 lightDirection = pLight->origin - hit.origin;
+            float distHitToLight =  glm::length(lightDirection);
+            lightDirection = normalize(lightDirection);
+
+            const Ray lightRay {hit.origin, lightDirection, 0.0001f,  distHitToLight};
+            if (const HitResult lightHit = tracer.intersect(lightRay); lightHit.didHit) {
+                return matColor * 0.5f;
+            }
+        }
+        return matColor;
     }
 
     // Background color (black)
