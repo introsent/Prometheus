@@ -103,6 +103,7 @@ add_executable(Prometheus
         src/init/embree_device.cpp
         src/init/embree_device.h
         src/structs/vertex.h
+        src/ray/ray.h
 )
 
 # Ensure GLM experimental features allowed for all compilation units of this target
