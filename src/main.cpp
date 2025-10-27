@@ -5,6 +5,7 @@
 #include <memory>
 
 // Project includes
+#include "vertex.h"
 #include "render/timer.h"
 #include "render/scene_manager.h"
 #include "camera/camera.h"
@@ -61,6 +62,105 @@ void createBaseColorWithLightScene(SceneManager* pScene)
         colors::white, 70.f, LightType::Point));
 }
 
+void createReferenceScene(SceneManager* pScene)
+{
+    // Setup Cook-Torrence materials
+    const unsigned char matCT_GrayRoughMetal = pScene->addMaterial(
+        new Material_CookTorrence(glm::vec3(0.972f, 0.960f, 0.915f), 1.f, 1.f));
+    const unsigned char matCT_GrayMediumMetal = pScene->addMaterial(
+        new Material_CookTorrence(glm::vec3(0.972f, 0.960f, 0.915f), 1.f, 0.6f));
+    const unsigned char matCT_GraySmoothMetal = pScene->addMaterial(
+        new Material_CookTorrence(glm::vec3(0.972f, 0.960f, 0.915f), 1.f, 0.1f));
+
+    const unsigned char matCT_GrayRoughPlastic = pScene->addMaterial(
+        new Material_CookTorrence(glm::vec3(0.75f, 0.75f, 0.75f), 0.f, 1.f));
+    const unsigned char matCT_GrayMediumPlastic = pScene->addMaterial(
+        new Material_CookTorrence(glm::vec3(0.75f, 0.75f, 0.75f), 0.f, 0.6f));
+    const unsigned char matCT_GraySmoothPlastic = pScene->addMaterial(
+        new Material_CookTorrence(glm::vec3(0.75f, 0.75f, 0.75f), 0.f, 0.1f));
+
+    // Lambert materials for room
+    const unsigned char matLambert_GrayBlue = pScene->addMaterial(
+        new Material_Lambert(glm::vec3(0.49f, 0.57f, 0.57f), 1.f));
+    const unsigned char matLambert_White = pScene->addMaterial(
+        new Material_Lambert(colors::white, 1.f));
+
+    // Lambert-Phong materials (for triangles if needed)
+    const unsigned char matLambertPhong1 = pScene->addMaterial(
+        new Material_LambertPhong(colors::blue, 0.5f, 0.5f, 3.f));
+    const unsigned char matLambertPhong2 = pScene->addMaterial(
+        new Material_LambertPhong(colors::blue, 0.5f, 0.5f, 15.f));
+    const unsigned char matLambertPhong3 = pScene->addMaterial(
+        new Material_LambertPhong(colors::blue, 0.5f, 0.5f, 50.f));
+
+    // Room planes
+    pScene->addPlane({0.f, 0.f, 10.f}, {0.f, 0.f, -1.f}, matLambert_GrayBlue);   // BACK
+    pScene->addPlane({0.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, matLambert_GrayBlue);     // BOTTOM
+    pScene->addPlane({0.f, 10.f, 0.f}, {0.f, -1.f, 0.f}, matLambert_GrayBlue);   // TOP
+    pScene->addPlane({5.f, 0.f, 0.f}, {-1.f, 0.f, 0.f}, matLambert_GrayBlue);    // RIGHT
+    pScene->addPlane({-5.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, matLambert_GrayBlue);    // LEFT
+
+    // Bottom row spheres (metals with varying roughness)
+    pScene->addSphere({-1.75f, 1.f, 0.f}, 0.75f, matCT_GrayRoughMetal);
+    pScene->addSphere({0.f, 1.f, 0.f}, 0.75f, matCT_GrayMediumMetal);
+    pScene->addSphere({1.75f, 1.f, 0.f}, 0.75f, matCT_GraySmoothMetal);
+
+    // Top row spheres (plastics with varying roughness)
+    pScene->addSphere({-1.75f, 3.f, 0.f}, 0.75f, matCT_GrayRoughPlastic);
+    pScene->addSphere({0.f, 3.f, 0.f}, 0.75f, matCT_GrayMediumPlastic);
+    pScene->addSphere({1.75f, 3.f, 0.f}, 0.75f, matCT_GraySmoothPlastic);
+
+    // Add triangles for culling demonstration
+    // Triangle 1: Back-face culling
+    std::vector<Vertex> triangle1 = {
+        {-2.5f, 6.f, 0.f},   // top
+        {-1.f, 4.5f, 0.f},   // bottom-right
+        {-2.5f, 4.5f, 0.f}   // bottom-left
+    };
+    pScene->addTriangle(triangle1, matLambert_White);
+
+    // Triangle 2: Front-face culling (reversed winding)
+    std::vector<Vertex> triangle2 = {
+        {0.f, 6.f, 0.f},     // top
+        {-0.75f, 4.5f, 0.f}, // bottom-left
+        {0.75f, 4.5f, 0.f}   // bottom-right
+    };
+    pScene->addTriangle(triangle2, matLambert_White);
+
+    // Triangle 3: No culling
+    std::vector<Vertex> triangle3 = {
+        {2.5f, 6.f, 0.f},    // top
+        {1.75f, 4.5f, 0.f},  // bottom-right
+        {2.5f, 4.5f, 0.f}    // bottom-left
+    };
+    pScene->addTriangle(triangle3, matLambert_White);
+
+    // Lights
+    pScene->addLight(new Light(
+        glm::vec3(0.f, 5.f, 5.f),
+        glm::vec3(0.f, 0.f, 0.f),
+        glm::vec3(1.f, 0.61f, 0.45f),  // Warm color
+        50.f,
+        LightType::Point
+    ));
+
+    pScene->addLight(new Light(
+        glm::vec3(-2.5f, 5.f, -5.f),
+        glm::vec3(0.f, 0.f, 0.f),
+        glm::vec3(1.f, 0.8f, 0.45f),   // Warm-neutral color
+        70.f,
+        LightType::Point
+    ));
+
+    pScene->addLight(new Light(
+        glm::vec3(2.5f, 2.5f, -5.f),
+        glm::vec3(0.f, 0.f, 0.f),
+        glm::vec3(0.34f, 0.47f, 0.68f), // Cool color
+        50.f,
+        LightType::Point
+    ));
+}
+
 int main(int argc, char* args[])
 {
     // Unreferenced parameters
@@ -84,7 +184,7 @@ int main(int argc, char* args[])
     auto pCamera = std::make_unique<Camera>(glm::vec3{0.f, 3.f, -9.f},
                                             45.f,
                                             static_cast<float>(WIDTH) / static_cast<float>(HEIGHT));
-    createBaseColorWithLightScene(pScene.get());
+    createReferenceScene(pScene.get());
     pScene->commit();
 
 

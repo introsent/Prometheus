@@ -14,6 +14,7 @@ public:
     [[nodiscard]] Ray generateRay(float u, float v) const;
 
     void setPosition(const glm::vec3& pos) { m_position = pos; }
+    [[nodiscard]] glm::vec3 getPosition() const { return m_position; }
     void setFOV(float fovDegrees);
 
 private:

@@ -22,7 +22,7 @@ public:
     ~Geometry() = default;
 
     void commit() const;
-    void attach(const EmbreeScene* embreeScenePtr) const;
+    unsigned attach(const EmbreeScene* embreeScenePtr) const;
     void release() const;
 protected:
     RTCGeometryType m_type;

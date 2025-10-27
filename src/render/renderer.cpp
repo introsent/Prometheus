@@ -1,4 +1,8 @@
-﻿#include "renderer.h"
+﻿//
+// Created by minaj on 10/27/2025.
+//
+
+#include "renderer.h"
 #include <algorithm>
 #include <iostream>
 
@@ -48,11 +52,10 @@ bool Renderer::initialize() {
 }
 
 void Renderer::render(const Camera& camera, const SceneManager& scene) {
-    const RayTracer tracer(scene.getScene());
+    const RayTracer tracer(&scene);
     const auto amountOfPixels = static_cast<uint32_t>(m_width * m_height);
     constexpr uint32_t packetSize = 16;
 
-    // create packet start indices
     std::vector<uint32_t> packetStarts;
     packetStarts.reserve((amountOfPixels + packetSize - 1) / packetSize);
     for (uint32_t start = 0; start < amountOfPixels; start += packetSize)
@@ -64,7 +67,6 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
 #else
     for (uint32_t start : packetStarts) {
 #endif
-        // Build up to 16 rays
         std::vector<Ray> rays;
         rays.reserve(packetSize);
         std::vector<uint32_t> pixelIndices;
@@ -84,42 +86,59 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
             pixelIndices.push_back(pixelIndex);
         }
 
-        // Call packet intersection
         std::vector<HitResult> hits;
         tracer.intersectPacket16(rays, hits);
 
-        // Shade and write pixels
         for (size_t lane = 0; lane < hits.size(); ++lane) {
             const HitResult& hit = hits[lane];
             glm::vec3 color = {0.f, 0.f, 0.f};
+
             if (hit.didHit) {
                 const unsigned char matId = scene.getGeometryMaterial(hit.geomID);
                 const Material* mat = scene.getMaterial(matId);
-                glm::vec3 matColor = mat->getColor();
 
-                // Lights
+                glm::vec3 viewDir = camera.getPosition() - hit.origin;
+                viewDir = glm::normalize(viewDir);
+
                 const auto& lights = scene.getLights();
-                bool shadowed = false;
                 for (const auto& pLight : lights) {
                     glm::vec3 lightDirection = pLight->origin - hit.origin;
                     float distHitToLight = glm::length(lightDirection);
-                    lightDirection = normalize(lightDirection);
+                    lightDirection = glm::normalize(lightDirection);
 
-                    const Ray lightRay{hit.origin, lightDirection, 0.0001f, distHitToLight};
-                    if (tracer.isOccluded(lightRay)) {
-                        shadowed = true;
-                        break;
+                    // Shadow check
+                    const Ray shadowRay{hit.origin, lightDirection, 0.0001f, distHitToLight};
+                    if (tracer.isOccluded(shadowRay)) {
+                        continue;
                     }
+
+                    // Calculate observed area (Lambert's cosine law)
+                    float cosAngle = std::max(glm::dot(hit.normal, lightDirection), 0.f);
+                    if (cosAngle <= 0.f) continue;
+
+                    // Calculate radiance
+                    glm::vec3 radiance;
+                    if (pLight->type == LightType::Point) {
+                        float distSq = distHitToLight * distHitToLight;
+                        radiance = pLight->color * (pLight->intensity / distSq);
+                    } else { // Directional
+                        radiance = pLight->color * pLight->intensity;
+                    }
+
+                    // BRDF shading
+                    glm::vec3 brdf = mat->shade(hit.origin, hit.normal, viewDir, lightDirection);
+
+                    // Combined: BRDF * Radiance * cos(angle)
+                    color += brdf * radiance * cosAngle;
                 }
-                color = shadowed ? matColor * 0.5f : matColor;
-            } else {
-                color = {0.f, 0.f, 0.f};
+
+                // Clamp to valid range
+                color = glm::clamp(color, 0.f, 1.f);
             }
 
-            // convert color -> ARGB8888
-            const Uint8 r = static_cast<Uint8>(std::clamp(color.r * 255.f, 0.f, 255.f));
-            const Uint8 g = static_cast<Uint8>(std::clamp(color.g * 255.f, 0.f, 255.f));
-            const Uint8 b = static_cast<Uint8>(std::clamp(color.b * 255.f, 0.f, 255.f));
+            const auto r = static_cast<Uint8>(color.r * 255.f);
+            const auto g = static_cast<Uint8>(color.g * 255.f);
+            const auto b = static_cast<Uint8>(color.b * 255.f);
 
             uint32_t pixelIndex = pixelIndices[lane];
             m_pixels[pixelIndex] = (0xFFu << 24) | (r << 16) | (g << 8) | b;
@@ -131,26 +150,6 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
 #endif
 
     SDL_UpdateTexture(m_texture, nullptr, m_pixels.data(), m_width * sizeof(Uint32));
-}
-
-
-void Renderer::renderPixel(const Camera& camera, const SceneManager& scene,
-                           const RayTracer& tracer, uint32_t pixelIndex) {
-    const uint32_t px = pixelIndex % m_width;
-    const uint32_t py = pixelIndex / m_width;
-
-    const float u = static_cast<float>(px + 0.5f) / static_cast<float>(m_width);
-    const float v = static_cast<float>(py + 0.5f) / static_cast<float>(m_height);
-
-    Ray ray = camera.generateRay(u, v);
-    const glm::vec3 color = traceRay(ray, tracer, scene);
-
-    // Convert to ARGB8888
-    const Uint8 r = static_cast<Uint8>(std::clamp(color.r * 255.f, 0.f, 255.f));
-    const Uint8 g = static_cast<Uint8>(std::clamp(color.g * 255.f, 0.f, 255.f));
-    const Uint8 b = static_cast<Uint8>(std::clamp(color.b * 255.f, 0.f, 255.f));
-
-    m_pixels[py * m_width + px] = (0xFF << 24) | (r << 16) | (g << 8) | b;
 }
 
 void Renderer::present() {
@@ -170,34 +169,6 @@ bool Renderer::shouldQuit() {
         }
     }
     return m_quit;
-}
-
-glm::vec3 Renderer::traceRay(const Ray& ray, const RayTracer& tracer, const SceneManager& scene) {
-    if (const HitResult hit = tracer.intersect(ray); hit.didHit) {
-
-        const unsigned char matId = scene.getGeometryMaterial(hit.geomID);
-        const Material* mat = scene.getMaterial(matId);
-        glm::vec3 matColor = mat->getColor();
-
-        const auto& lights = scene.getLights();
-
-
-        for (const auto& pLight : lights) {
-            // Configure light
-            glm::vec3 lightDirection = pLight->origin - hit.origin;
-            float distHitToLight =  glm::length(lightDirection);
-            lightDirection = normalize(lightDirection);
-
-            const Ray lightRay {hit.origin, lightDirection, 0.0001f,  distHitToLight};
-            if (const HitResult lightHit = tracer.intersect(lightRay); lightHit.didHit) {
-                return matColor * 0.5f;
-            }
-        }
-        return matColor;
-    }
-
-    // Background color (black)
-    return {0.f, 0.f, 0.f};
 }
 
 SDL_Color Renderer::toSDLColor(const glm::vec3& color) {

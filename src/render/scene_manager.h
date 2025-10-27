@@ -5,10 +5,12 @@
 #ifndef SCENE_MANAGER_H
 #define SCENE_MANAGER_H
 #include <memory>
+#include <unordered_map>
 #include <vector>
 #include "embree_scene.h"
 #include "light.h"
 #include "material.h"
+#include "vertex.h"
 #include "embree4/rtcore_device.h"
 
 class EmbreeScene;
@@ -23,6 +25,7 @@ public:
     unsigned char addMaterial(Material* material);
     void addSphere(const glm::vec3& center, float radius, unsigned char materialId);
     void addPlane(const glm::vec3& origin, const glm::vec3& normal, unsigned char materialId);
+    void addTriangle(const std::vector<Vertex>& vertices, unsigned char materialId);
     void addLight(Light* light);
 
     void commit();
@@ -31,7 +34,7 @@ public:
     [[nodiscard]] const Material* getMaterial(unsigned char materialId) const;
     [[nodiscard]] const Light* getLight(unsigned char lightId) const;
     [[nodiscard]] unsigned char getGeometryMaterial(unsigned int geomID) const;
-
+    [[nodiscard]] RTCGeometryType getGeometryType(unsigned int geomID) const;
     [[nodiscard]] const std::vector<std::unique_ptr<Light>>& getLights() const noexcept { return m_lights; }
 private:
     std::unique_ptr<EmbreeDevice> m_devicePtr;
@@ -40,6 +43,7 @@ private:
     std::vector<std::unique_ptr<Geometry>> m_geometries;
     std::vector<std::unique_ptr<Light>> m_lights;
     std::vector<unsigned char> m_geometryMaterials;
+    std::unordered_map<unsigned, RTCGeometryType> m_geometryTypes;
 };
 
 #endif //SCENE_MANAGER_H

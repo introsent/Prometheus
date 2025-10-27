@@ -3,9 +3,9 @@
 //
 
 #include "scene_manager.h"
-
 #include "plane.h"
 #include "sphere.h"
+#include "triangle.h"
 
 SceneManager::SceneManager() {
     m_devicePtr = std::make_unique<EmbreeDevice>();
@@ -28,7 +28,12 @@ unsigned char SceneManager::addMaterial(Material* material) {
 void SceneManager::addSphere(const glm::vec3& center, float radius, unsigned char materialId) {
     auto sphere = std::make_unique<Sphere>(center, radius, m_devicePtr.get());
     sphere->commit();
-    sphere->attach(m_scenePtr.get());
+
+    // Get the geomID when attaching
+    unsigned geomID = rtcAttachGeometry(m_scenePtr->handle(), sphere->getGeometry());
+
+    // Store the geometry type
+    m_geometryTypes[geomID] = sphere->getType();
 
     m_geometryMaterials.push_back(materialId);
     m_geometries.push_back(std::move(sphere));
@@ -37,17 +42,34 @@ void SceneManager::addSphere(const glm::vec3& center, float radius, unsigned cha
 void SceneManager::addPlane(const glm::vec3& origin, const glm::vec3& normal, unsigned char materialId) {
     auto plane = std::make_unique<Plane>(origin, normal, m_devicePtr.get());
     plane->commit();
-    plane->attach(m_scenePtr.get());
+
+    // Get the geomID when attaching
+    unsigned geomID = rtcAttachGeometry(m_scenePtr->handle(), plane->getGeometry());
+
+    // Store the geometry type
+    m_geometryTypes[geomID] = plane->getType();
 
     m_geometryMaterials.push_back(materialId);
     m_geometries.push_back(std::move(plane));
 }
 
-void SceneManager::addLight(Light* light)
-{
-    m_lights.push_back(std::unique_ptr<Light>(light));
+void SceneManager::addTriangle(const std::vector<Vertex>& vertices, unsigned char materialId) {
+    auto triangle = std::make_unique<Triangle>(vertices, m_devicePtr.get());
+    triangle->commit();
+
+    // Get the geomID when attaching
+    unsigned geomID = rtcAttachGeometry(m_scenePtr->handle(), triangle->getGeometry());
+
+    // Store the geometry type
+    m_geometryTypes[geomID] = triangle->getType();
+
+    m_geometryMaterials.push_back(materialId);
+    m_geometries.push_back(std::move(triangle));
 }
 
+void SceneManager::addLight(Light* light) {
+    m_lights.push_back(std::unique_ptr<Light>(light));
+}
 
 void SceneManager::commit() {
     m_scenePtr->commit();
@@ -60,7 +82,7 @@ const Material* SceneManager::getMaterial(unsigned char materialId) const {
     return m_materials[0].get(); // Default to red
 }
 
-const Light * SceneManager::getLight(unsigned char lightId) const {
+const Light* SceneManager::getLight(unsigned char lightId) const {
     if (lightId < m_lights.size()) {
         return m_lights[lightId].get();
     }
@@ -74,3 +96,9 @@ unsigned char SceneManager::getGeometryMaterial(unsigned int geomID) const {
     return 0; // Default material
 }
 
+RTCGeometryType SceneManager::getGeometryType(unsigned int geomID) const {
+    if (const auto it = m_geometryTypes.find(geomID); it != m_geometryTypes.end()) {
+        return it->second;
+    }
+    return RTC_GEOMETRY_TYPE_TRIANGLE; // Default fallback
+}

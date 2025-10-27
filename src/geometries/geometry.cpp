@@ -19,8 +19,8 @@ void Geometry::commit() const {
     rtcCommitGeometry(m_geometry);
 }
 
-void Geometry::attach(const EmbreeScene* embreeScenePtr) const {
-    rtcAttachGeometry(embreeScenePtr->handle(), m_geometry);
+unsigned Geometry::attach(const EmbreeScene* embreeScenePtr) const {
+    return rtcAttachGeometry(embreeScenePtr->handle(), m_geometry);
 }
 
 void Geometry::release() const {

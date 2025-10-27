@@ -14,6 +14,7 @@ struct HitResult {
     unsigned primID = 0;
     float u = 0.f, v = 0.f;
     glm::vec3 origin = glm::vec3(0.f);
+    glm::vec3 normal = glm::vec3(0.f);
 };
 
 #endif //HIT_RESULT_H

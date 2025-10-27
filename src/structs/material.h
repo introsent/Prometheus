@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <cmath>
 
-#include "glm/detail/func_geometric.inl"
+#include "glm/geometric.hpp"
 
 #ifndef PI
 #define PI 3.14159265358979323846f
@@ -132,7 +132,8 @@ struct Material_CookTorrence final : public Material {
                                   const glm::vec3& viewDir, const glm::vec3& lightDir) const override {
         const glm::vec3 f0 = (metalness == 0.f) ? glm::vec3(0.04f) : albedo;
 
-        const glm::vec3 h = glm::normalize(viewDir + lightDir);
+        glm::vec3 h = viewDir + lightDir;
+        h = glm::normalize(h);
 
         const glm::vec3 F = BRDF::FresnelFunction_Schlick(h, viewDir, f0);
         const float D = BRDF::NormalDistribution_GGX(normal, h, roughness);
