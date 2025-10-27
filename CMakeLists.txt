@@ -115,6 +115,7 @@ add_executable(Prometheus
         src/camera/camera.h
         src/render/renderer.cpp
         src/render/renderer.h
+        src/structs/material.h
 )
 
 target_include_directories(Prometheus PRIVATE
