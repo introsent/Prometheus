@@ -5,6 +5,7 @@
 #include "embree_scene.h"
 EmbreeScene::EmbreeScene(const EmbreeDevice* devicePtr) {
     m_scene = rtcNewScene(devicePtr->handle());
+    rtcSetSceneBuildQuality(m_scene, RTC_BUILD_QUALITY_HIGH);
 }
 
 void EmbreeScene::commit() {
