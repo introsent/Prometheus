@@ -109,6 +109,8 @@ add_executable(Prometheus
         src/ray/ray_tracer.h
         src/geometries/sphere.cpp
         src/geometries/sphere.h
+        src/geometries/plane.cpp
+        src/geometries/plane.h
 )
 
 # Ensure GLM experimental features allowed for all compilation units of this target
