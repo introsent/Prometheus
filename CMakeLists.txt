@@ -111,6 +111,8 @@ add_executable(Prometheus
         src/geometries/sphere.h
         src/geometries/plane.cpp
         src/geometries/plane.h
+        src/camera/camera.cpp
+        src/camera/camera.h
 )
 
 # Ensure GLM experimental features allowed for all compilation units of this target
