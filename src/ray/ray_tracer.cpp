@@ -47,8 +47,7 @@ void RayTracer::intersectPacket16(const std::vector<Ray> &rays, std::vector<HitR
     results.resize(N);
 
     // Create and zero the SOA rayhit structure with required alignment
-    alignas(64) RTCRayHit16 rayhit;
-    std::memset(&rayhit, 0, sizeof(rayhit));
+    alignas(64) RTCRayHit16 rayhit = {};
 
     // valid mask: -1 for active lane, 0 for inactive
     int valid[16];
