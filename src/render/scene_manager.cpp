@@ -1,9 +1,8 @@
 ﻿//
-// Created by minaj on 10/27/2025.
+// Optimized scene manager - reduce unnecessary updates
 //
 
 #include "scene_manager.h"
-
 #include "global_indices.h"
 #include "plane.h"
 #include "sphere.h"
@@ -12,9 +11,8 @@
 SceneManager::SceneManager() {
     m_devicePtr = std::make_unique<EmbreeDevice>();
     m_scenePtr = std::make_unique<EmbreeScene>(m_devicePtr.get());
-
-    // Default red material at index 0
     m_materials.push_back(std::make_unique<Material_SolidColor>(colors::red));
+    m_needsCommit = false;
 }
 
 SceneManager::~SceneManager() {
@@ -31,28 +29,22 @@ void SceneManager::addSphere(const glm::vec3& center, float radius, unsigned cha
     auto sphere = std::make_unique<Sphere>(center, radius, m_devicePtr.get());
     sphere->commit();
 
-    // Get the geomID when attaching
     unsigned geomID = rtcAttachGeometry(m_scenePtr->handle(), sphere->getGeometry());
-
-    // Store the geometry type
     m_geometryTypes[geomID] = sphere->getType();
-
     m_geometryMaterials.push_back(materialId);
     m_geometries.push_back(std::move(sphere));
+    m_needsCommit = true;
 }
 
 void SceneManager::addPlane(const glm::vec3& origin, const glm::vec3& normal, unsigned char materialId) {
     auto plane = std::make_unique<Plane>(origin, normal, m_devicePtr.get());
     plane->commit();
 
-    // Get the geomID when attaching
     unsigned geomID = rtcAttachGeometry(m_scenePtr->handle(), plane->getGeometry());
-
-    // Store the geometry type
     m_geometryTypes[geomID] = plane->getType();
-
     m_geometryMaterials.push_back(materialId);
     m_geometries.push_back(std::move(plane));
+    m_needsCommit = true;
 }
 
 unsigned int SceneManager::addTriangle(const std::vector<Vertex>& vertices, unsigned char materialId,
@@ -66,13 +58,11 @@ unsigned int SceneManager::addTriangle(const std::vector<Vertex>& vertices, unsi
     m_cullingModes[geomID] = culling;
     m_geometryMaterials.push_back(materialId);
 
-    // Store the index in the geometries vector for later retrieval
     const size_t geometryIndex = m_geometries.size();
     m_triangleIndices.push_back(geometryIndex);
-
     m_geometries.push_back(std::move(triangle));
+    m_needsCommit = true;
 
-    // Return the triangle index (not the geometry index)
     return static_cast<unsigned int>(m_triangleIndices.size() - 1);
 }
 
@@ -81,31 +71,50 @@ void SceneManager::addLight(Light* light) {
 }
 
 void SceneManager::commit() {
-    m_scenePtr->commit();
+    if (m_needsCommit) {
+        m_scenePtr->commit();
+        m_needsCommit = false;
+    }
 }
 
 void SceneManager::update(const Timer* pTimer) {
-    // Calculate rotation angle (oscillates between 0 and 2*PI)
-    const float yawAngle = (std::cos(pTimer->getTotal()) + 1.f) / 2.f  * 6.283185307179586476925f;
-
-    // Rotate all triangles
-    for (const unsigned int triIdx : g_triangleIndices) {
-        if (Triangle* pTriangle = getTriangle(triIdx)) {
-            pTriangle->rotateY(yawAngle);
-            pTriangle->updateAABB();
-            pTriangle->updateTransforms();
-        }
+    if (g_triangleIndices.empty()) {
+        return;
     }
 
-    // Recommit the scene after transformations
-    commit();
+    const float yawAngle = (std::cos(pTimer->getTotal()) + 1.f) * 3.141592653589793f;
+
+    static float lastYawAngle = -1.0f;
+    static bool transformsDirty = false;
+
+    // Only update if angle changed significantly
+    if (std::abs(yawAngle - lastYawAngle) > 0.001f) {
+        lastYawAngle = yawAngle;
+        transformsDirty = true;
+
+        for (const unsigned int triIdx : g_triangleIndices) {
+            if (Triangle* pTriangle = getTriangle(triIdx)) {
+                pTriangle->rotateY(yawAngle);
+                pTriangle->updateAABB();
+                pTriangle->updateTransforms();
+            }
+        }
+
+        m_needsCommit = true;
+    }
+
+    // Only commit if transforms were dirty
+    if (transformsDirty && m_needsCommit) {
+        commit();
+        transformsDirty = false;
+    }
 }
 
 const Material* SceneManager::getMaterial(unsigned char materialId) const {
     if (materialId < m_materials.size()) {
         return m_materials[materialId].get();
     }
-    return m_materials[0].get(); // Default to red
+    return m_materials[0].get();
 }
 
 const Light* SceneManager::getLight(unsigned char lightId) const {
@@ -119,14 +128,14 @@ unsigned char SceneManager::getGeometryMaterial(unsigned int geomID) const {
     if (geomID < m_geometryMaterials.size()) {
         return m_geometryMaterials[geomID];
     }
-    return 0; // Default material
+    return 0;
 }
 
 RTCGeometryType SceneManager::getGeometryType(unsigned int geomID) const {
     if (const auto it = m_geometryTypes.find(geomID); it != m_geometryTypes.end()) {
         return it->second;
     }
-    return RTC_GEOMETRY_TYPE_TRIANGLE; // Default fallback
+    return RTC_GEOMETRY_TYPE_TRIANGLE;
 }
 
 CullingMode SceneManager::getCullingMode(unsigned geomID) const {

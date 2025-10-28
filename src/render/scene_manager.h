@@ -58,6 +58,8 @@ private:
     std::unordered_map<unsigned, CullingMode> m_cullingModes;
 
     std::vector<size_t> m_triangleIndices;
+
+    bool m_needsCommit;
 };
 
 #endif //SCENE_MANAGER_H

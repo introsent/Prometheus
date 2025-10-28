@@ -1,5 +1,5 @@
 ﻿//
-// Created by minaj on 10/27/2025.
+// Optimized renderer with better parallelization
 //
 
 #include "renderer.h"
@@ -53,95 +53,96 @@ bool Renderer::initialize() {
 
 void Renderer::render(const Camera& camera, const SceneManager& scene) {
     const RayTracer tracer(&scene);
-    const auto amountOfPixels = static_cast<uint32_t>(m_width * m_height);
-    constexpr uint32_t packetSize = 16;
+    const auto totalPixels = static_cast<uint32_t>(m_width * m_height);
 
-    std::vector<uint32_t> packetStarts;
-    packetStarts.reserve((amountOfPixels + packetSize - 1) / packetSize);
-    for (uint32_t start = 0; start < amountOfPixels; start += packetSize)
-        packetStarts.push_back(start);
+    // Pre-cache camera position and lights to avoid repeated calls
+    const glm::vec3 cameraPos = camera.getPosition();
+    const auto& lights = scene.getLights();
+
+    // Use larger tiles for better cache coherency
+    constexpr uint32_t tileSize = 64; // 8x8 tiles
+    const uint32_t tilesX = (m_width + 7) / 8;
+    const uint32_t tilesY = (m_height + 7) / 8;
+    const uint32_t totalTiles = tilesX * tilesY;
+
+    std::vector<uint32_t> tileIndices(totalTiles);
+    for (uint32_t i = 0; i < totalTiles; ++i) {
+        tileIndices[i] = i;
+    }
 
 #if defined(PARALLEL_EXECUTION)
-    std::for_each(std::execution::par, packetStarts.begin(), packetStarts.end(),
-                  [&](uint32_t start) {
+    std::for_each(std::execution::par, tileIndices.begin(), tileIndices.end(),
+                  [&](uint32_t tileIdx) {
 #else
-    for (uint32_t start : packetStarts) {
+    for (uint32_t tileIdx : tileIndices) {
 #endif
-        std::vector<Ray> rays;
-        rays.reserve(packetSize);
-        std::vector<uint32_t> pixelIndices;
-        pixelIndices.reserve(packetSize);
+        const uint32_t tileX = tileIdx % tilesX;
+        const uint32_t tileY = tileIdx / tilesX;
+        const uint32_t startX = tileX * 8;
+        const uint32_t startY = tileY * 8;
+        const uint32_t endX = std::min(startX + 8, static_cast<uint32_t>(m_width));
+        const uint32_t endY = std::min(startY + 8, static_cast<uint32_t>(m_height));
 
-        for (uint32_t i = 0; i < packetSize; ++i) {
-            uint32_t pixelIndex = start + i;
-            if (pixelIndex >= amountOfPixels) break;
-            const uint32_t px = pixelIndex % m_width;
-            const uint32_t py = pixelIndex / m_width;
+        // Process tile
+        for (uint32_t py = startY; py < endY; ++py) {
+            for (uint32_t px = startX; px < endX; ++px) {
+                const float u = (static_cast<float>(px) + 0.5f) / static_cast<float>(m_width);
+                const float v = (static_cast<float>(py) + 0.5f) / static_cast<float>(m_height);
 
-            const float u = static_cast<float>(px + 0.5f) / static_cast<float>(m_width);
-            const float v = static_cast<float>(py + 0.5f) / static_cast<float>(m_height);
+                const Ray ray = camera.generateRay(u, v);
+                const HitResult hit = tracer.intersect(ray);
 
-            Ray ray = camera.generateRay(u, v);
-            rays.push_back(ray);
-            pixelIndices.push_back(pixelIndex);
-        }
+                glm::vec3 color(0.f);
 
-        std::vector<HitResult> hits;
-        tracer.intersectPacket16(rays, hits);
+                if (hit.didHit) {
+                    const unsigned char matId = scene.getGeometryMaterial(hit.geomID);
+                    const Material* mat = scene.getMaterial(matId);
+                    const glm::vec3 viewDir = glm::normalize(cameraPos - hit.origin);
 
-        for (size_t lane = 0; lane < hits.size(); ++lane) {
-            const HitResult& hit = hits[lane];
-            glm::vec3 color = {0.f, 0.f, 0.f};
+                    // Accumulate lighting from all sources
+                    for (const auto& pLight : lights) {
+                        glm::vec3 lightDir = pLight->origin - hit.origin;
+                        const float distSq = glm::dot(lightDir, lightDir);
+                        const float dist = std::sqrt(distSq);
+                        lightDir *= (1.0f / dist); // Normalize
 
-            if (hit.didHit) {
-                const unsigned char matId = scene.getGeometryMaterial(hit.geomID);
-                const Material* mat = scene.getMaterial(matId);
+                        // Early exit if light is behind surface
+                        const float cosAngle = glm::dot(hit.normal, lightDir);
+                        if (cosAngle <= 0.0f) continue;
 
-                glm::vec3 viewDir = camera.getPosition() - hit.origin;
-                viewDir = glm::normalize(viewDir);
+                        // Shadow test
+                        const Ray shadowRay{hit.origin, lightDir, 0.0001f, dist};
+                        if (tracer.isOccluded(shadowRay)) {
+                            continue;
+                        }
 
-                const auto& lights = scene.getLights();
-                for (const auto& pLight : lights) {
-                    glm::vec3 lightDirection = pLight->origin - hit.origin;
-                    float distHitToLight = glm::length(lightDirection);
-                    lightDirection = glm::normalize(lightDirection);
+                        // Calculate radiance
+                        glm::vec3 radiance;
+                        if (pLight->type == LightType::Point) {
+                            radiance = pLight->color * (pLight->intensity / distSq);
+                        } else {
+                            radiance = pLight->color * pLight->intensity;
+                        }
 
-                    // Shadow check
-                    const Ray shadowRay{hit.origin, lightDirection, 0.0001f, distHitToLight};
-                    if (tracer.isOccluded(shadowRay)) {
-                        continue;
+                        // BRDF evaluation
+                        const glm::vec3 brdf = mat->shade(hit.origin, hit.normal, viewDir, lightDir);
+
+                        // Accumulate
+                        color += brdf * radiance * cosAngle;
                     }
 
-                    // Calculate observed area (Lambert's cosine law)
-                    float cosAngle = std::max(glm::dot(hit.normal, lightDirection), 0.f);
-                    if (cosAngle <= 0.f) continue;
-
-                    // Calculate radiance
-                    glm::vec3 radiance;
-                    if (pLight->type == LightType::Point) {
-                        float distSq = distHitToLight * distHitToLight;
-                        radiance = pLight->color * (pLight->intensity / distSq);
-                    } else { // Directional
-                        radiance = pLight->color * pLight->intensity;
-                    }
-
-                    // BRDF shading
-                    glm::vec3 brdf = mat->shade(hit.origin, hit.normal, viewDir, lightDirection);
-
-                    // Combined: BRDF * Radiance * cos(angle)
-                    color += brdf * radiance * cosAngle;
+                    // Clamp after all lights
+                    color = glm::clamp(color, 0.f, 1.f);
                 }
 
-                // Clamp to valid range
-                color = glm::clamp(color, 0.f, 1.f);
+                // Convert to pixel color
+                const auto r = static_cast<Uint8>(color.r * 255.f);
+                const auto g = static_cast<Uint8>(color.g * 255.f);
+                const auto b = static_cast<Uint8>(color.b * 255.f);
+
+                const uint32_t pixelIndex = py * m_width + px;
+                m_pixels[pixelIndex] = (0xFFu << 24) | (r << 16) | (g << 8) | b;
             }
-
-            const auto r = static_cast<Uint8>(color.r * 255.f);
-            const auto g = static_cast<Uint8>(color.g * 255.f);
-            const auto b = static_cast<Uint8>(color.b * 255.f);
-
-            uint32_t pixelIndex = pixelIndices[lane];
-            m_pixels[pixelIndex] = (0xFFu << 24) | (r << 16) | (g << 8) | b;
         }
 #if defined(PARALLEL_EXECUTION)
     });

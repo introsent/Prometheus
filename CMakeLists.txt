@@ -1,6 +1,9 @@
 ﻿cmake_minimum_required(VERSION 3.24)
 project(Prometheus VERSION 0.1 LANGUAGES CXX)
 
+# High-performance compilation option
+option(HIGH_PERFORMANCE "Enable high-performance compilation flags for 100+ FPS" ON)
+
 # C++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -133,6 +136,50 @@ add_executable(Prometheus
         src/structs/global_indices.h
 )
 
+# High-performance flags - TARGET SPECIFIC (only for your main target)
+if(HIGH_PERFORMANCE)
+    if(MSVC)
+        # For MSVC: Only apply to Release builds, not Debug
+        target_compile_options(Prometheus PRIVATE
+                $<$<CONFIG:Release>:/O2>
+                $<$<CONFIG:RelWithDebInfo>:/O2>
+                $<$<CONFIG:Release>:/arch:AVX2>
+                $<$<CONFIG:RelWithDebInfo>:/arch:AVX2>
+        )
+        target_link_options(Prometheus PRIVATE
+                $<$<CONFIG:Release>:/LTCG>
+                $<$<CONFIG:RelWithDebInfo>:/LTCG>
+        )
+    else()
+        # For GCC/MinGW: Use simpler optimizations that work
+        target_compile_options(Prometheus PRIVATE
+                $<$<CONFIG:Release>:-O3>
+                $<$<CONFIG:RelWithDebInfo>:-O3>
+                $<$<CONFIG:Release>:-march=native>
+                $<$<CONFIG:RelWithDebInfo>:-march=native>
+                $<$<CONFIG:Release>:-ffast-math>
+                $<$<CONFIG:RelWithDebInfo>:-ffast-math>
+        )
+        # Only enable LTO if compiler supports it
+        include(CheckCXXCompilerFlag)
+        check_cxx_compiler_flag(-flto COMPILER_SUPPORTS_LTO)
+        if(COMPILER_SUPPORTS_LTO)
+            target_compile_options(Prometheus PRIVATE
+                    $<$<CONFIG:Release>:-flto>
+                    $<$<CONFIG:RelWithDebInfo>:-flto>
+            )
+            set_property(TARGET Prometheus PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+            set_property(TARGET Prometheus PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+        else()
+            message(STATUS "LTO not supported by compiler, skipping...")
+        endif()
+    endif()
+
+    target_compile_definitions(Prometheus PRIVATE PARALLEL_EXECUTION)
+    message(STATUS "High-performance compilation flags enabled for Prometheus target")
+endif()
+
+
 target_include_directories(Prometheus PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/src/camera
@@ -251,5 +298,6 @@ endif()
 
 # Install target
 install(TARGETS Prometheus RUNTIME DESTINATION bin)
+
 
 message(STATUS "CMake configuration done. Configure & build: cmake -S . -B build && cmake --build build --config Release")
