@@ -3,6 +3,8 @@
 //
 
 #include "scene_manager.h"
+
+#include "global_indices.h"
 #include "plane.h"
 #include "sphere.h"
 #include "triangle.h"
@@ -53,18 +55,26 @@ void SceneManager::addPlane(const glm::vec3& origin, const glm::vec3& normal, un
     m_geometries.push_back(std::move(plane));
 }
 
-void SceneManager::addTriangle(const std::vector<Vertex> &vertices, unsigned char materialId, CullingMode culling) {
+unsigned int SceneManager::addTriangle(const std::vector<Vertex>& vertices, unsigned char materialId,
+                                       CullingMode culling) {
     auto triangle = std::make_unique<Triangle>(vertices, m_devicePtr.get(), culling);
     triangle->commit();
 
-    unsigned geomID = rtcAttachGeometry(m_scenePtr->handle(), triangle->getGeometry());
+    const unsigned geomID = rtcAttachGeometry(m_scenePtr->handle(), triangle->getGeometry());
 
     m_geometryTypes[geomID] = triangle->getType();
-    m_cullingModes[geomID] = culling;  // Store culling mode
+    m_cullingModes[geomID] = culling;
     m_geometryMaterials.push_back(materialId);
-    m_geometries.push_back(std::move(triangle));
-}
 
+    // Store the index in the geometries vector for later retrieval
+    const size_t geometryIndex = m_geometries.size();
+    m_triangleIndices.push_back(geometryIndex);
+
+    m_geometries.push_back(std::move(triangle));
+
+    // Return the triangle index (not the geometry index)
+    return static_cast<unsigned int>(m_triangleIndices.size() - 1);
+}
 
 void SceneManager::addLight(Light* light) {
     m_lights.push_back(std::unique_ptr<Light>(light));
@@ -72,6 +82,23 @@ void SceneManager::addLight(Light* light) {
 
 void SceneManager::commit() {
     m_scenePtr->commit();
+}
+
+void SceneManager::update(const Timer* pTimer) {
+    // Calculate rotation angle (oscillates between 0 and 2*PI)
+    const float yawAngle = (std::cos(pTimer->getTotal()) + 1.f) / 2.f  * 6.283185307179586476925f;
+
+    // Rotate all triangles
+    for (const unsigned int triIdx : g_triangleIndices) {
+        if (Triangle* pTriangle = getTriangle(triIdx)) {
+            pTriangle->rotateY(yawAngle);
+            pTriangle->updateAABB();
+            pTriangle->updateTransforms();
+        }
+    }
+
+    // Recommit the scene after transformations
+    commit();
 }
 
 const Material* SceneManager::getMaterial(unsigned char materialId) const {
@@ -105,4 +132,17 @@ RTCGeometryType SceneManager::getGeometryType(unsigned int geomID) const {
 CullingMode SceneManager::getCullingMode(unsigned geomID) const {
     const auto it = m_cullingModes.find(geomID);
     return (it != m_cullingModes.end()) ? it->second : CullingMode::NONE;
+}
+
+Triangle *SceneManager::getTriangle(unsigned int triangleIndex) const {
+    if (triangleIndex < m_triangleIndices.size()) {
+        if (const size_t geometryIndex = m_triangleIndices[triangleIndex]; geometryIndex < m_geometries.size()) {
+            return dynamic_cast<Triangle*>(m_geometries[geometryIndex].get());
+        }
+    }
+    return nullptr;
+}
+
+size_t SceneManager::getTriangleCount() const {
+    return m_triangleIndices.size();
 }

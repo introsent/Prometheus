@@ -77,8 +77,8 @@ struct Material_SolidColor final : public Material {
 
     [[nodiscard]] MaterialType getType() const override { return MaterialType::SolidColor; }
 
-    [[nodiscard]] glm::vec3 shade(const glm::vec3& hitPoint, const glm::vec3& normal,
-                                  const glm::vec3& viewDir, const glm::vec3& lightDir) const override {
+    [[nodiscard]] glm::vec3 shade(const glm::vec3&, const glm::vec3&,
+                                  const glm::vec3&, const glm::vec3&) const override {
         return color;
     }
 };
@@ -92,8 +92,8 @@ struct Material_Lambert final : public Material {
 
     [[nodiscard]] MaterialType getType() const override { return MaterialType::Lambert; }
 
-    [[nodiscard]] glm::vec3 shade(const glm::vec3& hitPoint, const glm::vec3& normal,
-                                  const glm::vec3& viewDir, const glm::vec3& lightDir) const override {
+    [[nodiscard]] glm::vec3 shade(const glm::vec3&, const glm::vec3& ,
+                                  const glm::vec3&, const glm::vec3&) const override {
         return BRDF::Lambert(diffuseReflectance, diffuseColor);
     }
 };
@@ -110,7 +110,7 @@ struct Material_LambertPhong final : public Material {
 
         [[nodiscard]] MaterialType getType() const override { return MaterialType::LambertPhong; }
 
-        [[nodiscard]] glm::vec3 shade(const glm::vec3& hitPoint, const glm::vec3& normal,
+        [[nodiscard]] glm::vec3 shade(const glm::vec3&, const glm::vec3& normal,
                                   const glm::vec3& viewDir, const glm::vec3& lightDir) const override {
             const glm::vec3 diffuse = BRDF::Lambert(diffuseReflectance, diffuseColor);
             const glm::vec3 specular = BRDF::Phong(specularReflectance, phongExponent, lightDir, -viewDir, normal);
@@ -128,7 +128,7 @@ struct Material_CookTorrence final : public Material {
 
         [[nodiscard]] MaterialType getType() const override { return MaterialType::CookTorrence; }
 
-        [[nodiscard]] glm::vec3 shade(const glm::vec3& hitPoint, const glm::vec3& normal,
+        [[nodiscard]] glm::vec3 shade(const glm::vec3&, const glm::vec3& normal,
                                   const glm::vec3& viewDir, const glm::vec3& lightDir) const override {
         const glm::vec3 f0 = (metalness == 0.f) ? glm::vec3(0.04f) : albedo;
 

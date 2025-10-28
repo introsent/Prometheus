@@ -19,7 +19,7 @@ public:
     [[nodiscard]] RTCGeometryType getType() const;
     [[nodiscard]] RTCGeometry getGeometry() const;
 
-    ~Geometry() = default;
+   virtual ~Geometry() = default;
 
     void commit() const;
     unsigned attach(const EmbreeScene* embreeScenePtr) const;

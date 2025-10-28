@@ -130,6 +130,7 @@ add_executable(Prometheus
         src/render/timer.cpp
         src/render/timer.h
         src/structs/light.h
+        src/structs/global_indices.h
 )
 
 target_include_directories(Prometheus PRIVATE

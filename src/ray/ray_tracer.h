@@ -23,6 +23,7 @@ public:
 
     // Occlusion test (faster than full intersection)
     bool isOccluded(const Ray& ray) const;
+    void intersectionFilter(const struct RTCFilterFunctionNArguments* args) const;
 
 private:
     glm::vec3 computeNormal(const HitResult& hit, const Ray& ray) const;

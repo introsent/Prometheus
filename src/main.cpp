@@ -11,6 +11,8 @@
 #include "camera/camera.h"
 #include "render/renderer.h"
 #include "structs/material.h"
+#include "structs/global_indices.h"
+
 
 void createBaseColorScene(SceneManager* pScene)
 {
@@ -103,29 +105,39 @@ void createReferenceScene(SceneManager* pScene)
     pScene->addSphere({1.75f, 3.f, 0.f}, 0.75f, matCT_GraySmoothPlastic);
 
     // Add triangles for culling demonstration
-    // Triangle 1: Back-face culling
-    std::vector<Vertex> triangle1 = {
-        {-2.5f, 6.f, 0.f},   // top
-        {-1.f, 4.5f, 0.f},   // bottom-right
-        {-2.5f, 4.5f, 0.f}   // bottom-left
+    std::vector<Vertex> baseTriangle = {
+        {-0.75f, 1.5f, 0.f},   // top
+        {-0.75f, 0.f, 0.f},    // bottom-left (swapped)
+        {0.75f, 0.f, 0.f},     // bottom-right (swapped)
     };
-    pScene->addTriangle(triangle1, matLambert_White, CullingMode::BACK_FACE);
+
+    // Triangle 1: Back-face culling
+    const unsigned int tri1 = pScene->addTriangle(baseTriangle, matLambert_White, CullingMode::BACK_FACE);
+    g_triangleIndices.push_back(tri1);
+    if (Triangle* pTri1 = pScene->getTriangle(tri1)) {
+        pTri1->translate(glm::vec3(-1.75f, 4.5f, 0.f));
+        pTri1->updateAABB();
+        pTri1->updateTransforms();
+    }
 
     // Triangle 2: Front-face culling
-    std::vector<Vertex> triangle2 = {
-        {0.f, 6.f, 0.f},     // top
-        {-0.75f, 4.5f, 0.f}, // bottom-left
-        {0.75f, 4.5f, 0.f}   // bottom-right
-    };
-    pScene->addTriangle(triangle2, matLambert_White, CullingMode::FRONT_FACE);
-
+    const unsigned int tri2 = pScene->addTriangle(baseTriangle, matLambert_White, CullingMode::FRONT_FACE);
+    g_triangleIndices.push_back(tri2);
+    if (Triangle* pTri2 = pScene->getTriangle(tri2)) {
+        pTri2->translate(glm::vec3(0.f, 4.5f, 0.f));
+        pTri2->updateAABB();
+        pTri2->updateTransforms();
+    }
+//
     // Triangle 3: No culling
-    std::vector<Vertex> triangle3 = {
-        {2.5f, 6.f, 0.f},    // top
-        {1.75f, 4.5f, 0.f},  // bottom-right
-        {2.5f, 4.5f, 0.f}    // bottom-left
-    };
-    pScene->addTriangle(triangle3, matLambert_White, CullingMode::NONE);
+    const unsigned int tri3 = pScene->addTriangle(baseTriangle, matLambert_White, CullingMode::NONE);
+    g_triangleIndices.push_back(tri3);
+    if (Triangle* pTri3 = pScene->getTriangle(tri3)) {
+        pTri3->translate(glm::vec3(1.75f, 4.5f, 0.f));
+        pTri3->updateAABB();
+        pTri3->updateTransforms();
+    }
+
 
     // Lights
     pScene->addLight(new Light(
@@ -152,6 +164,9 @@ void createReferenceScene(SceneManager* pScene)
         LightType::Point
     ));
 }
+
+
+
 
 int main(int argc, char* args[])
 {
@@ -192,8 +207,7 @@ int main(int argc, char* args[])
     while (!pRenderer->shouldQuit())
     {
         //--------- Update ---------
-        // If your scene has update functionality, uncomment:
-        // pScene->Update(pTimer.get());
+        pScene->update(pTimer.get());
 
         //--------- Render ---------
         pRenderer->render(*pCamera, *pScene);
