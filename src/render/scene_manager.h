@@ -12,6 +12,7 @@
 #include "material.h"
 #include "timer.h"
 #include "triangle.h"
+#include "mesh.h"
 #include "vertex.h"
 #include "embree4/rtcore_device.h"
 
@@ -29,6 +30,7 @@ public:
     void addSphere(const glm::vec3& center, float radius, unsigned char materialId);
     void addPlane(const glm::vec3& origin, const glm::vec3& normal, unsigned char materialId);
     unsigned addTriangle(const std::vector<Vertex>& vertices, unsigned char materialId);
+    unsigned addMesh(const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices, unsigned char materialId);
     void addLight(Light* light);
 
     void commit();
@@ -44,8 +46,13 @@ public:
     [[nodiscard]] CullingMode getCullingMode(unsigned geomID) const;
 
     // Triangle access for transformations
-    [[nodiscard]] Triangle *getTriangle(unsigned int triangleIndex) const;
+    [[nodiscard]] Triangle* getTriangle(unsigned int triangleIndex) const;
     [[nodiscard]] size_t getTriangleCount() const;
+
+    // Mesh access for transformations
+    [[nodiscard]] Mesh* getMesh(unsigned int meshIndex) const;
+    [[nodiscard]] size_t getMeshCount() const;
+
 private:
     std::unique_ptr<EmbreeDevice> m_devicePtr;
     std::unique_ptr<EmbreeScene> m_scenePtr;
@@ -56,6 +63,7 @@ private:
     std::unordered_map<unsigned, RTCGeometryType> m_geometryTypes;
 
     std::vector<size_t> m_triangleIndices;
+    std::vector<size_t> m_meshIndices;
 
     bool m_needsCommit;
 };

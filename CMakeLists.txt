@@ -17,6 +17,7 @@ option(USE_VENDORED_EMBREE "Download & build Embree from source when not found" 
 option(USE_VENDORED_SDL3 "Download & build SDL3 from source when not found" ON)
 option(USE_VENDORED_GLM    "Download & use GLM from source when not found" ON)
 
+
 # ------------------------
 # Try system packages first (QUIET), fallback to vendored via FetchContent
 # ------------------------
@@ -136,7 +137,27 @@ add_executable(Prometheus
         src/render/timer.h
         src/structs/light.h
         src/structs/global_indices.h
+        external/tiny_obj_loader.h
+        src/parser/obj_parser.cpp
+        src/geometries/mesh.cpp
+        src/geometries/mesh.h
+        src/parser/obj_parser.h
 )
+
+# Copy resources to output folder
+set(RESOURCES_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resources")
+file(GLOB_RECURSE RESOURCE_FILES
+        "${RESOURCES_SOURCE_DIR}/*.jpg"
+        "${RESOURCES_SOURCE_DIR}/*.png"
+        "${RESOURCES_SOURCE_DIR}/*.obj"
+)
+set(RESOURCES_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/resources/")
+file(MAKE_DIRECTORY ${RESOURCES_OUT_DIR})
+foreach(RESOURCE ${RESOURCE_FILES})
+    add_custom_command(TARGET Prometheus POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy ${RESOURCE}
+            ${RESOURCES_OUT_DIR})
+endforeach(RESOURCE)
 
 # High-performance flags - TARGET SPECIFIC
 if(HIGH_PERFORMANCE)
@@ -189,6 +210,7 @@ target_include_directories(Prometheus PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/init
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ray
         ${CMAKE_CURRENT_SOURCE_DIR}/src/structs
+        ${CMAKE_CURRENT_SOURCE_DIR}/external
 )
 
 # Ensure GLM experimental features allowed for all compilation units of this target

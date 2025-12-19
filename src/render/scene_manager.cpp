@@ -7,6 +7,7 @@
 #include "plane.h"
 #include "sphere.h"
 #include "triangle.h"
+#include "mesh.h"
 
 SceneManager::SceneManager() {
     m_devicePtr = std::make_unique<EmbreeDevice>();
@@ -62,6 +63,25 @@ unsigned int SceneManager::addTriangle(const std::vector<Vertex>& vertices, unsi
     m_needsCommit = true;
 
     return static_cast<unsigned int>(m_triangleIndices.size() - 1);
+}
+
+unsigned int SceneManager::addMesh(const std::vector<Vertex>& vertices,
+                                    const std::vector<uint32_t>& indices,
+                                    unsigned char materialId) {
+    auto mesh = std::make_unique<Mesh>(vertices, indices, m_devicePtr.get());
+    mesh->commit();
+
+    const unsigned geomID = rtcAttachGeometry(m_scenePtr->handle(), mesh->getGeometry());
+
+    m_geometryTypes[geomID] = mesh->getType();
+    m_geometryMaterials.push_back(materialId);
+
+    const size_t geometryIndex = m_geometries.size();
+    m_meshIndices.push_back(geometryIndex);
+    m_geometries.push_back(std::move(mesh));
+    m_needsCommit = true;
+
+    return static_cast<unsigned int>(m_meshIndices.size() - 1);
 }
 
 void SceneManager::addLight(Light* light) {
@@ -136,8 +156,7 @@ RTCGeometryType SceneManager::getGeometryType(unsigned int geomID) const {
     return RTC_GEOMETRY_TYPE_TRIANGLE;
 }
 
-
-Triangle *SceneManager::getTriangle(unsigned int triangleIndex) const {
+Triangle* SceneManager::getTriangle(unsigned int triangleIndex) const {
     if (triangleIndex < m_triangleIndices.size()) {
         if (const size_t geometryIndex = m_triangleIndices[triangleIndex]; geometryIndex < m_geometries.size()) {
             return dynamic_cast<Triangle*>(m_geometries[geometryIndex].get());
@@ -148,4 +167,17 @@ Triangle *SceneManager::getTriangle(unsigned int triangleIndex) const {
 
 size_t SceneManager::getTriangleCount() const {
     return m_triangleIndices.size();
+}
+
+Mesh* SceneManager::getMesh(unsigned int meshIndex) const {
+    if (meshIndex < m_meshIndices.size()) {
+        if (const size_t geometryIndex = m_meshIndices[meshIndex]; geometryIndex < m_geometries.size()) {
+            return dynamic_cast<Mesh*>(m_geometries[geometryIndex].get());
+        }
+    }
+    return nullptr;
+}
+
+size_t SceneManager::getMeshCount() const {
+    return m_meshIndices.size();
 }

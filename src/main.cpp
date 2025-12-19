@@ -5,10 +5,12 @@
 #include <memory>
 
 // Project includes
+#include "mesh.h"
 #include "vertex.h"
 #include "render/timer.h"
 #include "render/scene_manager.h"
 #include "camera/camera.h"
+#include "parser/obj_parser.h"
 #include "render/renderer.h"
 #include "structs/material.h"
 #include "structs/global_indices.h"
@@ -106,9 +108,9 @@ void createReferenceScene(SceneManager* pScene)
 
     // Add triangle
     std::vector<Vertex> baseTriangle = {
-        {-0.75f, 1.5f, 0.f},   // top
-        {-0.75f, 0.f, 0.f},    // bottom-left (swapped)
-        {0.75f, 0.f, 0.f},     // bottom-right (swapped)
+        {{-0.75f, 1.5f, 0.f}},   // top
+        {{-0.75f, 0.f, 0.f}},    // bottom-left (swapped)
+        {{0.75f, 0.f, 0.f}},     // bottom-right (swapped)
     };
 
     // Triangle
@@ -147,7 +149,64 @@ void createReferenceScene(SceneManager* pScene)
     ));
 }
 
+void createBunnyScene(SceneManager* pScene)
+{
+    // Lambert materials for room
+    const unsigned char matLambert_GrayBlue = pScene->addMaterial(
+        new Material_Lambert(glm::vec3(0.49f, 0.57f, 0.57f), 1.f));
+    const unsigned char matLambert_White = pScene->addMaterial(
+        new Material_Lambert(colors::white, 1.f));
 
+    // Room planes (same as reference scene)
+    pScene->addPlane({0.f, 0.f, 10.f}, {0.f, 0.f, -1.f}, matLambert_GrayBlue);   // BACK
+    pScene->addPlane({0.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, matLambert_GrayBlue);     // BOTTOM
+    pScene->addPlane({0.f, 10.f, 0.f}, {0.f, -1.f, 0.f}, matLambert_GrayBlue);   // TOP
+    pScene->addPlane({5.f, 0.f, 0.f}, {-1.f, 0.f, 0.f}, matLambert_GrayBlue);    // RIGHT
+    pScene->addPlane({-5.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, matLambert_GrayBlue);    // LEFT
+
+    // Load bunny mesh
+    std::vector<Vertex> bunnyVertices;
+    std::vector<uint32_t> bunnyIndices;
+
+    if (ParseOBJ("resources/lowpoly_bunny.obj", bunnyVertices, bunnyIndices)) {
+        const unsigned int bunnyId = pScene->addMesh(bunnyVertices, bunnyIndices, matLambert_White);
+
+        if (Mesh* pBunny = pScene->getMesh(bunnyId)) {
+            // Apply transformations
+            pBunny->rotateY(glm::radians(180.0f)); // PI radians = 180 degrees
+            pBunny->scale(glm::vec3(2.f, 2.f, 2.f));
+            pBunny->updateAABB();
+            pBunny->updateTransforms();
+        }
+    } else {
+        std::cerr << "Failed to load lowpoly_bunny.obj" << std::endl;
+    }
+
+    // Lights (same as reference scene)
+    pScene->addLight(new Light(
+        glm::vec3(0.f, 5.f, 5.f),
+        glm::vec3(0.f, 0.f, 0.f),
+        glm::vec3(1.f, 0.61f, 0.45f),  // Warm color
+        50.f,
+        LightType::Point
+    ));
+
+    pScene->addLight(new Light(
+        glm::vec3(-2.5f, 5.f, -5.f),
+        glm::vec3(0.f, 0.f, 0.f),
+        glm::vec3(1.f, 0.8f, 0.45f),   // Warm-neutral color
+        70.f,
+        LightType::Point
+    ));
+
+    pScene->addLight(new Light(
+        glm::vec3(2.5f, 2.5f, -5.f),
+        glm::vec3(0.f, 0.f, 0.f),
+        glm::vec3(0.34f, 0.47f, 0.68f), // Cool color
+        50.f,
+        LightType::Point
+    ));
+}
 
 
 int main(int argc, char* args[])
@@ -182,7 +241,7 @@ int main(int argc, char* args[])
     pTimer->start();
 
     // Uncomment to start benchmark
-    // pTimer->startBenchmark(1000); // 1000 frames benchmark
+    //pTimer->startBenchmark(10); // 1000 frames benchmark
 
     float printTimer = 0.f;
 

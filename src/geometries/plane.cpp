@@ -4,12 +4,13 @@
 
 #include "plane.h"
 #include <limits>
-
 #include "glm/ext/quaternion_geometric.hpp"
 
 Plane::Plane(const glm::vec3& origin, const glm::vec3& normal, const EmbreeDevice* devicePtr)
-    : Geometry(RTC_GEOMETRY_TYPE_QUAD, devicePtr->handle()) {
-
+    : Geometry(RTC_GEOMETRY_TYPE_QUAD, devicePtr->handle()),
+      m_origin(origin),
+      m_normal(glm::normalize(normal))
+{
     // Create a large quad to represent the plane (ideally infinite, but we simulate it)
     constexpr float planeSize = 10000.f;
 
@@ -23,19 +24,22 @@ Plane::Plane(const glm::vec3& origin, const glm::vec3& normal, const EmbreeDevic
     const glm::vec3 v = glm::normalize(glm::cross(normal, u));
 
     // Create quad vertices
-    auto* vertices = static_cast<float*>(rtcSetNewGeometryBuffer(m_geometry,
+    m_vertexBuffer = static_cast<float*>(rtcSetNewGeometryBuffer(m_geometry,
         RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3,
         3 * sizeof(float), 4));
 
-    const glm::vec3 p0 = origin - u * planeSize - v * planeSize;
-    const glm::vec3 p1 = origin + u * planeSize - v * planeSize;
-    const glm::vec3 p2 = origin + u * planeSize + v * planeSize;
-    const glm::vec3 p3 = origin - u * planeSize + v * planeSize;
+    // Store original vertices
+    m_originalVertices[0] = origin - u * planeSize - v * planeSize;
+    m_originalVertices[1] = origin + u * planeSize - v * planeSize;
+    m_originalVertices[2] = origin + u * planeSize + v * planeSize;
+    m_originalVertices[3] = origin - u * planeSize + v * planeSize;
 
-    vertices[0] = p0.x; vertices[1] = p0.y; vertices[2] = p0.z;
-    vertices[3] = p1.x; vertices[4] = p1.y; vertices[5] = p1.z;
-    vertices[6] = p2.x; vertices[7] = p2.y; vertices[8] = p2.z;
-    vertices[9] = p3.x; vertices[10] = p3.y; vertices[11] = p3.z;
+    // Fill vertex buffer
+    for (int i = 0; i < 4; ++i) {
+        m_vertexBuffer[i * 3 + 0] = m_originalVertices[i].x;
+        m_vertexBuffer[i * 3 + 1] = m_originalVertices[i].y;
+        m_vertexBuffer[i * 3 + 2] = m_originalVertices[i].z;
+    }
 
     // Create quad indices
     auto* indices = static_cast<unsigned*>(rtcSetNewGeometryBuffer(m_geometry,
@@ -46,4 +50,34 @@ Plane::Plane(const glm::vec3& origin, const glm::vec3& normal, const EmbreeDevic
     indices[1] = 1;
     indices[2] = 2;
     indices[3] = 3;
+
+    // Initialize AABB
+    Plane::updateAABB();
+    updateTransformedAABB();
+}
+
+void Plane::updateAABB() {
+    if (!m_vertexBuffer) return;
+
+    m_minAABB = m_originalVertices[0];
+    m_maxAABB = m_originalVertices[0];
+
+    for (int i = 1; i < 4; ++i) {
+        m_minAABB = glm::min(m_minAABB, m_originalVertices[i]);
+        m_maxAABB = glm::max(m_maxAABB, m_originalVertices[i]);
+    }
+}
+
+void Plane::applyTransforms() {
+    if (!m_vertexBuffer) return;
+
+    const glm::mat4 finalTransform = getFinalTransform();
+
+    // Apply transformation to all 4 vertices
+    for (int i = 0; i < 4; ++i) {
+        const glm::vec3 transformedPos = transformPoint(m_originalVertices[i], finalTransform);
+        m_vertexBuffer[i * 3 + 0] = transformedPos.x;
+        m_vertexBuffer[i * 3 + 1] = transformedPos.y;
+        m_vertexBuffer[i * 3 + 2] = transformedPos.z;
+    }
 }

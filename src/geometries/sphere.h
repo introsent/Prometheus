@@ -7,7 +7,6 @@
 #include "geometry.h"
 #include "glm/vec3.hpp"
 
-
 class EmbreeDevice;
 
 class Sphere : public Geometry {
@@ -17,10 +16,16 @@ public:
     void setMaterialId(unsigned char materialId) { m_materialId = materialId; }
     [[nodiscard]] unsigned char getMaterialId() const { return m_materialId; }
 
+    void updateAABB() override;
+
 private:
     unsigned char m_materialId = 0;
+
+    // Store original geometry data
+    glm::vec3 m_center;
+    float m_radius;
+
+    void applyTransforms() override;
 };
-
-
 
 #endif //SPHERE_H
