@@ -185,15 +185,15 @@ void createBunnyScene(SceneManager* pScene)
             pBunny->updateAABB();
             pBunny->updateTransforms();
 
-            pBunny->setUpdateFunc([pBunny](float, float totalTime)
-            {
-                const float yaw =
-                    (std::cos(totalTime) + 1.f) * glm::pi<float>();
-
-                pBunny->rotateY(yaw);
-                pBunny->updateAABB();
-                pBunny->updateTransforms();
-            });
+            //pBunny->setUpdateFunc([pBunny](float, float totalTime)
+            //{
+            //    const float yaw =
+            //        (std::cos(totalTime) + 1.f) * glm::pi<float>();
+            //
+            //    pBunny->rotateY(yaw);
+            //    pBunny->updateAABB();
+            //    pBunny->updateTransforms();
+            //});
         }
     } else {
         std::cerr << "Failed to load lowpoly_bunny.obj" << std::endl;
