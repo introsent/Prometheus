@@ -10,7 +10,7 @@
 
 class Triangle : public Geometry {
 public:
-    Triangle(const std::vector<Vertex>& vertices, const EmbreeDevice* devicePtr);
+    Triangle(SceneManager* scene, const std::vector<Vertex>& vertices, const EmbreeDevice* devicePtr);
 
     void updateAABB() override;
 

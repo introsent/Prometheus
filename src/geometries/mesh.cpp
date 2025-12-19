@@ -5,10 +5,10 @@
 #include "mesh.h"
 #include <embree4/rtcore.h>
 
-Mesh::Mesh(const std::vector<Vertex>& vertices,
+Mesh::Mesh(SceneManager* scene, const std::vector<Vertex>& vertices,
            const std::vector<uint32_t>& indices,
            const EmbreeDevice* device)
-    : Geometry(RTC_GEOMETRY_TYPE_TRIANGLE, device->handle()),
+    : Geometry(scene,RTC_GEOMETRY_TYPE_TRIANGLE, device->handle()),
       m_originalVertices(vertices),
       m_indices(indices)
 {

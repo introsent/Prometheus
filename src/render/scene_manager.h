@@ -34,6 +34,7 @@ public:
     void addLight(Light* light);
 
     void commit();
+    void markDirty() { m_needsCommit = true; }
 
     void update(const Timer* pTimer);
 
@@ -43,7 +44,6 @@ public:
     [[nodiscard]] unsigned char getGeometryMaterial(unsigned int geomID) const;
     [[nodiscard]] RTCGeometryType getGeometryType(unsigned int geomID) const;
     [[nodiscard]] const std::vector<std::unique_ptr<Light>>& getLights() const noexcept { return m_lights; }
-    [[nodiscard]] CullingMode getCullingMode(unsigned geomID) const;
 
     // Triangle access for transformations
     [[nodiscard]] Triangle* getTriangle(unsigned int triangleIndex) const;

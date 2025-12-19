@@ -11,7 +11,7 @@ class EmbreeDevice;
 
 class Sphere : public Geometry {
 public:
-    Sphere(const glm::vec3& center, float radius, const EmbreeDevice* devicePtr);
+    Sphere(SceneManager* scene, const glm::vec3& center, float radius, const EmbreeDevice* devicePtr);
 
     void setMaterialId(unsigned char materialId) { m_materialId = materialId; }
     [[nodiscard]] unsigned char getMaterialId() const { return m_materialId; }

@@ -27,7 +27,7 @@ unsigned char SceneManager::addMaterial(Material* material) {
 }
 
 void SceneManager::addSphere(const glm::vec3& center, float radius, unsigned char materialId) {
-    auto sphere = std::make_unique<Sphere>(center, radius, m_devicePtr.get());
+    auto sphere = std::make_unique<Sphere>(this, center, radius, m_devicePtr.get());
     sphere->commit();
 
     unsigned geomID = rtcAttachGeometry(m_scenePtr->handle(), sphere->getGeometry());
@@ -38,7 +38,7 @@ void SceneManager::addSphere(const glm::vec3& center, float radius, unsigned cha
 }
 
 void SceneManager::addPlane(const glm::vec3& origin, const glm::vec3& normal, unsigned char materialId) {
-    auto plane = std::make_unique<Plane>(origin, normal, m_devicePtr.get());
+    auto plane = std::make_unique<Plane>(this, origin, normal, m_devicePtr.get());
     plane->commit();
 
     unsigned geomID = rtcAttachGeometry(m_scenePtr->handle(), plane->getGeometry());
@@ -49,7 +49,7 @@ void SceneManager::addPlane(const glm::vec3& origin, const glm::vec3& normal, un
 }
 
 unsigned int SceneManager::addTriangle(const std::vector<Vertex>& vertices, unsigned char materialId) {
-    auto triangle = std::make_unique<Triangle>(vertices, m_devicePtr.get());
+    auto triangle = std::make_unique<Triangle>(this, vertices, m_devicePtr.get());
     triangle->commit();
 
     const unsigned geomID = rtcAttachGeometry(m_scenePtr->handle(), triangle->getGeometry());
@@ -68,7 +68,7 @@ unsigned int SceneManager::addTriangle(const std::vector<Vertex>& vertices, unsi
 unsigned int SceneManager::addMesh(const std::vector<Vertex>& vertices,
                                     const std::vector<uint32_t>& indices,
                                     unsigned char materialId) {
-    auto mesh = std::make_unique<Mesh>(vertices, indices, m_devicePtr.get());
+    auto mesh = std::make_unique<Mesh>(this, vertices, indices, m_devicePtr.get());
     mesh->commit();
 
     const unsigned geomID = rtcAttachGeometry(m_scenePtr->handle(), mesh->getGeometry());
@@ -96,36 +96,16 @@ void SceneManager::commit() {
 }
 
 void SceneManager::update(const Timer* pTimer) {
-    if (g_triangleIndices.empty()) {
-        return;
+    const float dt = pTimer->getElapsed();
+    const float total = pTimer->getTotal();
+
+    for (auto& geometry : m_geometries)
+    {
+        geometry->update(dt, total);
     }
 
-    const float yawAngle = (std::cos(pTimer->getTotal()) + 1.f) * 3.141592653589793f;
-
-    static float lastYawAngle = -1.0f;
-    static bool transformsDirty = false;
-
-    // Only update if angle changed significantly
-    if (std::abs(yawAngle - lastYawAngle) > 0.001f) {
-        lastYawAngle = yawAngle;
-        transformsDirty = true;
-
-        for (const unsigned int triIdx : g_triangleIndices) {
-            if (Triangle* pTriangle = getTriangle(triIdx)) {
-                pTriangle->rotateY(yawAngle);
-                pTriangle->updateAABB();
-                pTriangle->updateTransforms();
-            }
-        }
-
-        m_needsCommit = true;
-    }
-
-    // Only commit if transforms were dirty
-    if (transformsDirty && m_needsCommit) {
+    if (m_needsCommit)
         commit();
-        transformsDirty = false;
-    }
 }
 
 const Material* SceneManager::getMaterial(unsigned char materialId) const {

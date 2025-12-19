@@ -11,7 +11,7 @@
 
 class Plane : public Geometry {
 public:
-    Plane(const glm::vec3& origin, const glm::vec3& normal, const EmbreeDevice* devicePtr);
+    Plane(SceneManager* scene, const glm::vec3& origin, const glm::vec3& normal, const EmbreeDevice* devicePtr);
 
     void setMaterialId(unsigned char materialId) { m_materialId = materialId; }
     [[nodiscard]] unsigned char getMaterialId() const { return m_materialId; }

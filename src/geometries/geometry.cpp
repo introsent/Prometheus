@@ -3,9 +3,9 @@
 //
 
 #include "geometry.h"
-
-Geometry::Geometry(RTCGeometryType geometryType, RTCDevice device)
-    : m_type(geometryType)
+#include "render/scene_manager.h"
+Geometry::Geometry(SceneManager* scene, RTCGeometryType geometryType, RTCDevice device)
+    :  m_type(geometryType), m_scene(scene)
 {
     m_geometry = rtcNewGeometry(device, geometryType);
 }
@@ -76,6 +76,15 @@ void Geometry::updateTransformedAABB() {
         const glm::vec3 transformedCorner = transformPoint(corners[i], finalTransform);
         m_transformedMinAABB = glm::min(m_transformedMinAABB, transformedCorner);
         m_transformedMaxAABB = glm::max(m_transformedMaxAABB, transformedCorner);
+    }
+}
+
+void Geometry::update(float dt, float totalTime)
+{
+    if (m_updateFunc)
+    {
+        m_updateFunc(dt, totalTime);
+        m_scene->markDirty();
     }
 }
 

@@ -6,8 +6,8 @@
 #include <limits>
 #include "glm/ext/quaternion_geometric.hpp"
 
-Plane::Plane(const glm::vec3& origin, const glm::vec3& normal, const EmbreeDevice* devicePtr)
-    : Geometry(RTC_GEOMETRY_TYPE_QUAD, devicePtr->handle()),
+Plane::Plane(SceneManager* scene, const glm::vec3& origin, const glm::vec3& normal, const EmbreeDevice* devicePtr)
+    : Geometry(scene, RTC_GEOMETRY_TYPE_QUAD, devicePtr->handle()),
       m_origin(origin),
       m_normal(glm::normalize(normal))
 {

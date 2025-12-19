@@ -5,8 +5,8 @@
 #include "sphere.h"
 #include "init/embree_device.h"
 
-Sphere::Sphere(const glm::vec3& center, float radius, const EmbreeDevice* devicePtr)
-    : Geometry(RTC_GEOMETRY_TYPE_SPHERE_POINT, devicePtr->handle()),
+Sphere::Sphere(SceneManager* scene, const glm::vec3& center, float radius, const EmbreeDevice* devicePtr)
+    : Geometry(scene, RTC_GEOMETRY_TYPE_SPHERE_POINT, devicePtr->handle()),
       m_center(center),
       m_radius(radius)
 {

@@ -11,7 +11,7 @@
 
 class Mesh final : public Geometry {
 public:
-    Mesh(const std::vector<Vertex>& vertices,
+    Mesh(SceneManager* scene, const std::vector<Vertex>& vertices,
          const std::vector<uint32_t>& indices,
          const EmbreeDevice* device);
 

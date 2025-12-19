@@ -3,8 +3,8 @@
 //
 #include "triangle.h"
 
-Triangle::Triangle(const std::vector<Vertex>& vertices, const EmbreeDevice* devicePtr)
-    : Geometry(RTC_GEOMETRY_TYPE_TRIANGLE, devicePtr->handle()),
+Triangle::Triangle(SceneManager* scene, const std::vector<Vertex>& vertices, const EmbreeDevice* devicePtr)
+    : Geometry(scene, RTC_GEOMETRY_TYPE_TRIANGLE, devicePtr->handle()),
       m_originalVertices(vertices)
 {
     m_vertexBuffer = static_cast<float*>(rtcSetNewGeometryBuffer(m_geometry,

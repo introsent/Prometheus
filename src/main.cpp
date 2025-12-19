@@ -114,12 +114,19 @@ void createReferenceScene(SceneManager* pScene)
     };
 
     // Triangle
-    const unsigned int tri2 = pScene->addTriangle(baseTriangle, matLambert_White);
-    g_triangleIndices.push_back(tri2);
-    if (Triangle* pTri2 = pScene->getTriangle(tri2)) {
-        pTri2->translate(glm::vec3(0.f, 4.5f, 0.f));
-        pTri2->updateAABB();
-        pTri2->updateTransforms();
+    const unsigned int triId = pScene->addTriangle(baseTriangle, matLambert_White);
+    if (Triangle* tri = pScene->getTriangle(triId)) {
+        tri->translate({0.f, 4.5f, 0.f});
+
+        tri->setUpdateFunc([tri](float, float totalTime)
+        {
+            const float yaw =
+                (std::cos(totalTime) + 1.f) * glm::pi<float>();
+
+            tri->rotateY(yaw);
+            tri->updateAABB();
+            tri->updateTransforms();
+        });
     }
 
 
@@ -177,6 +184,16 @@ void createBunnyScene(SceneManager* pScene)
             pBunny->scale(glm::vec3(2.f, 2.f, 2.f));
             pBunny->updateAABB();
             pBunny->updateTransforms();
+
+            pBunny->setUpdateFunc([pBunny](float, float totalTime)
+            {
+                const float yaw =
+                    (std::cos(totalTime) + 1.f) * glm::pi<float>();
+
+                pBunny->rotateY(yaw);
+                pBunny->updateAABB();
+                pBunny->updateTransforms();
+            });
         }
     } else {
         std::cerr << "Failed to load lowpoly_bunny.obj" << std::endl;
@@ -232,7 +249,7 @@ int main(int argc, char* args[])
     auto pCamera = std::make_unique<Camera>(glm::vec3{0.f, 3.f, -9.f},
                                             45.f,
                                             static_cast<float>(WIDTH) / static_cast<float>(HEIGHT));
-    createReferenceScene(pScene.get());
+    createBunnyScene(pScene.get());
     pScene->commit();
 
 
