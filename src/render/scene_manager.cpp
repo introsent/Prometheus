@@ -47,15 +47,13 @@ void SceneManager::addPlane(const glm::vec3& origin, const glm::vec3& normal, un
     m_needsCommit = true;
 }
 
-unsigned int SceneManager::addTriangle(const std::vector<Vertex>& vertices, unsigned char materialId,
-                                       CullingMode culling) {
-    auto triangle = std::make_unique<Triangle>(vertices, m_devicePtr.get(), culling);
+unsigned int SceneManager::addTriangle(const std::vector<Vertex>& vertices, unsigned char materialId) {
+    auto triangle = std::make_unique<Triangle>(vertices, m_devicePtr.get());
     triangle->commit();
 
     const unsigned geomID = rtcAttachGeometry(m_scenePtr->handle(), triangle->getGeometry());
 
     m_geometryTypes[geomID] = triangle->getType();
-    m_cullingModes[geomID] = culling;
     m_geometryMaterials.push_back(materialId);
 
     const size_t geometryIndex = m_geometries.size();
@@ -138,10 +136,6 @@ RTCGeometryType SceneManager::getGeometryType(unsigned int geomID) const {
     return RTC_GEOMETRY_TYPE_TRIANGLE;
 }
 
-CullingMode SceneManager::getCullingMode(unsigned geomID) const {
-    const auto it = m_cullingModes.find(geomID);
-    return (it != m_cullingModes.end()) ? it->second : CullingMode::NONE;
-}
 
 Triangle *SceneManager::getTriangle(unsigned int triangleIndex) const {
     if (triangleIndex < m_triangleIndices.size()) {

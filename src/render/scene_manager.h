@@ -28,8 +28,7 @@ public:
     unsigned char addMaterial(Material* material);
     void addSphere(const glm::vec3& center, float radius, unsigned char materialId);
     void addPlane(const glm::vec3& origin, const glm::vec3& normal, unsigned char materialId);
-    unsigned addTriangle(const std::vector<Vertex>& vertices, unsigned char materialId,
-                    CullingMode culling = CullingMode::NONE);
+    unsigned addTriangle(const std::vector<Vertex>& vertices, unsigned char materialId);
     void addLight(Light* light);
 
     void commit();
@@ -55,7 +54,6 @@ private:
     std::vector<std::unique_ptr<Light>> m_lights;
     std::vector<unsigned char> m_geometryMaterials;
     std::unordered_map<unsigned, RTCGeometryType> m_geometryTypes;
-    std::unordered_map<unsigned, CullingMode> m_cullingModes;
 
     std::vector<size_t> m_triangleIndices;
 

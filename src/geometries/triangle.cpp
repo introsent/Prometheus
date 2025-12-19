@@ -3,10 +3,9 @@
 //
 #include "triangle.h"
 
-Triangle::Triangle(const std::vector<Vertex>& vertices, const EmbreeDevice* devicePtr,
-                   CullingMode culling)
+Triangle::Triangle(const std::vector<Vertex>& vertices, const EmbreeDevice* devicePtr)
     : Geometry(RTC_GEOMETRY_TYPE_TRIANGLE, devicePtr->handle())
-    , m_cullingMode(culling) {
+     {
 
     m_vertexBuffer = static_cast<float*>(rtcSetNewGeometryBuffer(m_geometry,
         RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3,
@@ -42,10 +41,6 @@ void Triangle::fillIndexBuffer(const std::vector<Vertex>& vertices) const {
         m_indexBuffer[t * 3 + 1] = t * 3 + 1;
         m_indexBuffer[t * 3 + 2] = t * 3 + 2;
     }
-}
-
-CullingMode Triangle::getCullingMode() const {
-    return m_cullingMode;
 }
 
 void Triangle::translate(const glm::vec3 &translation) {

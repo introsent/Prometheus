@@ -43,6 +43,8 @@ if(NOT embree_FOUND AND USE_VENDORED_EMBREE)
     # Restrict ISAs: enable only SSE4.2; disable AVX/AVX2/AVX512 to avoid building extra kernels:
     set(EMBREE_ISA_SSE2     ON  CACHE BOOL "Enable SSE2" FORCE)
     set(EMBREE_ISA_SSE42    ON  CACHE BOOL "Enable SSE4.2" FORCE)
+    set(EMBREE_BACKFACE_CULLING ON CACHE BOOL "Enable backface culling" FORCE)
+    set(EMBREE_BACKFACE_CULLING_SPHERES ON CACHE BOOL "Enable backface culling spheres" FORCE)
     set(EMBREE_ISA_AVX      OFF CACHE BOOL "Disable AVX" FORCE)
     set(EMBREE_ISA_AVX2     OFF CACHE BOOL "Disable AVX2" FORCE)
     set(EMBREE_ISA_AVX512SKX OFF CACHE BOOL "Disable AVX512 SKX" FORCE)
@@ -136,7 +138,7 @@ add_executable(Prometheus
         src/structs/global_indices.h
 )
 
-# High-performance flags - TARGET SPECIFIC (only for your main target)
+# High-performance flags - TARGET SPECIFIC
 if(HIGH_PERFORMANCE)
     if(MSVC)
         # For MSVC: Only apply to Release builds, not Debug

@@ -104,38 +104,20 @@ void createReferenceScene(SceneManager* pScene)
     pScene->addSphere({0.f, 3.f, 0.f}, 0.75f, matCT_GrayMediumPlastic);
     pScene->addSphere({1.75f, 3.f, 0.f}, 0.75f, matCT_GraySmoothPlastic);
 
-    // Add triangles for culling demonstration
+    // Add triangle
     std::vector<Vertex> baseTriangle = {
         {-0.75f, 1.5f, 0.f},   // top
         {-0.75f, 0.f, 0.f},    // bottom-left (swapped)
         {0.75f, 0.f, 0.f},     // bottom-right (swapped)
     };
 
-    // Triangle 1: Back-face culling
-    const unsigned int tri1 = pScene->addTriangle(baseTriangle, matLambert_White, CullingMode::BACK_FACE);
-    g_triangleIndices.push_back(tri1);
-    if (Triangle* pTri1 = pScene->getTriangle(tri1)) {
-        pTri1->translate(glm::vec3(-1.75f, 4.5f, 0.f));
-        pTri1->updateAABB();
-        pTri1->updateTransforms();
-    }
-
-    // Triangle 2: Front-face culling
-    const unsigned int tri2 = pScene->addTriangle(baseTriangle, matLambert_White, CullingMode::FRONT_FACE);
+    // Triangle
+    const unsigned int tri2 = pScene->addTriangle(baseTriangle, matLambert_White);
     g_triangleIndices.push_back(tri2);
     if (Triangle* pTri2 = pScene->getTriangle(tri2)) {
         pTri2->translate(glm::vec3(0.f, 4.5f, 0.f));
         pTri2->updateAABB();
         pTri2->updateTransforms();
-    }
-//
-    // Triangle 3: No culling
-    const unsigned int tri3 = pScene->addTriangle(baseTriangle, matLambert_White, CullingMode::NONE);
-    g_triangleIndices.push_back(tri3);
-    if (Triangle* pTri3 = pScene->getTriangle(tri3)) {
-        pTri3->translate(glm::vec3(1.75f, 4.5f, 0.f));
-        pTri3->updateAABB();
-        pTri3->updateTransforms();
     }
 
 
