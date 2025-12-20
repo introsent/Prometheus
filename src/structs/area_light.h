@@ -154,6 +154,7 @@ private:
     float m_intensity;
 
     std::vector<std::unique_ptr<TriangleAreaLight>> m_triangleLights;
+    std::vector<std::unique_ptr<AreaLightSampler>> m_triangleSamplers;
     std::vector<float> m_triangleCDF;  // For importance sampling triangles
     float m_totalArea;
 };

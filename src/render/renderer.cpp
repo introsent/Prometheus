@@ -72,7 +72,7 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
     const auto& lights = scene.getLights();
 
     // area light settings
-    constexpr int AREA_LIGHT_SAMPLES = 4; // number of samples per area light
+    constexpr int AREA_LIGHT_SAMPLES = 256; // number of samples per area light
 
     // use larger tiles for better cache coherency
     constexpr uint32_t tileSize = 64; // 8x8 tiles
@@ -116,6 +116,10 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
                     const unsigned char matId = scene.getGeometryMaterial(hit.geomID);
                     const Material* mat = scene.getMaterial(matId);
                     const glm::vec3 viewDir = glm::normalize(cameraPos - hit.origin);
+
+                    if (mat->getType() == MaterialType::Emissive) {
+                        color = dynamic_cast<const Material_Emissive*>(mat)->getEmission();
+                    }
 
                     // direct lighting from all light sources
                     for (const auto& pLight : lights) {

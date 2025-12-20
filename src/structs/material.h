@@ -19,7 +19,8 @@ enum class MaterialType {
     SolidColor,
     Lambert,
     LambertPhong,
-    CookTorrence
+    CookTorrence,
+    Emissive
 };
 
 // BRDF Helper Functions
@@ -148,6 +149,28 @@ struct Material_CookTorrence final : public Material {
 
         return BRDF::Lambert(kd, albedo) + specular;
     }
+};
+
+struct Material_Emissive : public Material {
+public:
+    Material_Emissive(const glm::vec3& emission, float intensity)
+        : m_emission(emission), m_intensity(intensity) {}
+
+    [[nodiscard]] glm::vec3 shade(const glm::vec3& origin,
+                   const glm::vec3& normal,
+                   const glm::vec3& viewDir,
+                   const glm::vec3& lightDir) const override {
+        // emissive materials don't reflect light, they emit
+        return glm::vec3(0.0f);
+    }
+
+    [[nodiscard]] MaterialType getType() const override { return MaterialType::Emissive; }
+
+    [[nodiscard]] glm::vec3 getEmission() const { return m_emission * m_intensity; }
+
+private:
+    glm::vec3 m_emission;
+    float m_intensity;
 };
 
 namespace colors {

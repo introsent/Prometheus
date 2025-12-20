@@ -257,6 +257,66 @@ void createSceneA(SceneManager* pScene)
     pScene->addTriangleAreaLight(ceilingLight_tri2, emission, intensity);
 }
 
+void createSceneB(SceneManager* pScene)
+{
+     // Lambert materials for room
+    const unsigned char matLambert_GrayBlue = pScene->addMaterial(
+        new Material_Lambert(glm::vec3(0.49f, 0.57f, 0.57f), 1.f));
+
+    // Room planes (same as reference scene)
+    pScene->addPlane({0.f, 0.f, 10.f}, {0.f, 0.f, -1.f}, matLambert_GrayBlue);   // BACK
+    pScene->addPlane({0.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, matLambert_GrayBlue);     // BOTTOM
+    pScene->addPlane({0.f, 10.f, 0.f}, {0.f, -1.f, 0.f}, matLambert_GrayBlue);   // TOP
+    pScene->addPlane({5.f, 0.f, 0.f}, {-1.f, 0.f, 0.f}, matLambert_GrayBlue);    // RIGHT
+    pScene->addPlane({-5.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, matLambert_GrayBlue);    // LEFT
+
+    // Load bunny mesh AS AN AREA LIGHT
+    std::vector<Vertex> bunnyVertices;
+    std::vector<uint32_t> bunnyIndices;
+
+    if (ParseOBJ("resources/lowpoly_bunny.obj", bunnyVertices, bunnyIndices)) {
+
+        // apply transformations to vertices BEFORE adding as area light
+        glm::mat4 transform = glm::mat4(1.0f);
+        transform = glm::rotate(transform, glm::radians(180.0f), glm::vec3(0.f, 1.f, 0.f));
+        transform = glm::scale(transform, glm::vec3(2.f, 2.f, 2.f));
+
+        // transform all vertices
+        for (auto& vertex : bunnyVertices) {
+            glm::vec4 pos(vertex.position.x, vertex.position.y, vertex.position.z, 1.0f);
+            glm::vec4 transformedPos = transform * pos;
+            vertex.position.x = transformedPos.x;
+            vertex.position.y = transformedPos.y;
+            vertex.position.z = transformedPos.z;
+
+            // transform normals (use inverse transpose for normals)
+            glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(transform)));
+            glm::vec3 normal(vertex.normal.x, vertex.normal.y, vertex.normal.z);
+            glm::vec3 transformedNormal = glm::normalize(normalMatrix * normal);
+            vertex.normal.x = transformedNormal.x;
+            vertex.normal.y = transformedNormal.y;
+            vertex.normal.z = transformedNormal.z;
+        }
+
+        // define emission properties
+        glm::vec3 emission(1.0f, 0.0f, 0.0f);
+        float intensity = 10.0f;  // high intensity since bunny is the only light source
+
+        // Add bunny as a MESH AREA LIGHT
+        pScene->addMeshAreaLight(
+            bunnyVertices,
+            bunnyIndices,
+            emission,
+            intensity
+        );
+
+        std::cout << "Emissive bunny added as mesh area light with "
+                  << (bunnyIndices.size() / 3) << " triangle lights" << std::endl;
+
+    } else {
+        std::cerr << "Failed to load lowpoly_bunny.obj" << std::endl;
+    }
+}
 
 int main(int argc, char* args[])
 {
@@ -281,7 +341,7 @@ int main(int argc, char* args[])
     auto pCamera = std::make_unique<Camera>(glm::vec3{0.f, 3.f, -9.f},
                                             45.f,
                                             static_cast<float>(WIDTH) / static_cast<float>(HEIGHT));
-    createSceneA(pScene.get());
+    createSceneB(pScene.get());
     pScene->commit();
 
 

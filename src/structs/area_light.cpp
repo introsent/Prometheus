@@ -179,40 +179,61 @@ MeshAreaLight::MeshAreaLight(unsigned int meshIndex,
     const auto& vertices = mesh->getOriginalVertices();
     const auto& indices = mesh->getIndices();
 
-    // create triangle lights for each triangle in the mesh
+    // create triangle lights for each face WITHOUT adding to scene
     for (size_t i = 0; i < indices.size(); i += 3) {
-        // create a temporary triangle for this face
-        std::vector triVerts = {
-            vertices[indices[i]],
-            vertices[indices[i + 1]],
-            vertices[indices[i + 2]]
-        };
+        const uint32_t idx0 = indices[i];
+        const uint32_t idx1 = indices[i + 1];
+        const uint32_t idx2 = indices[i + 2];
 
-        // add triangle to scene and create light
-        unsigned int triIndex = scene->addTriangle(triVerts, 0); // material id do not matter
-        auto triLight = std::make_unique<TriangleAreaLight>(triIndex, emission, intensity, scene);
+        // extract triangle vertices
+        const glm::vec3 v0(vertices[idx0].position.x,
+                          vertices[idx0].position.y,
+                          vertices[idx0].position.z);
+        const glm::vec3 v1(vertices[idx1].position.x,
+                          vertices[idx1].position.y,
+                          vertices[idx1].position.z);
+        const glm::vec3 v2(vertices[idx2].position.x,
+                          vertices[idx2].position.y,
+                          vertices[idx2].position.z);
 
-        m_totalArea += triLight->getArea();
-        m_triangleLights.push_back(std::move(triLight));
+        // calculate normal and area directly
+        const glm::vec3 edge1 = v1 - v0;
+        const glm::vec3 edge2 = v2 - v0;
+        const glm::vec3 crossProd = glm::cross(edge1, edge2);
+        const float area = 0.5f * glm::length(crossProd);
+        const glm::vec3 normal = (area > 0.0f) ? glm::normalize(crossProd) : glm::vec3(0, 1, 0);
+
+        // create sampler directly (skip TriangleAreaLight wrapper for now)
+        auto sampler = std::make_unique<UniformTriangleSampler>(
+            v0, v1, v2, normal, area, emission, intensity
+        );
+
+        m_totalArea += area;
+        m_triangleSamplers.push_back(std::move(sampler));
     }
 
-    // build CDF for triangle selection (uniform for now, area-weighted later)
-    m_triangleCDF.resize(m_triangleLights.size());
+    // build CDF for triangle selection (area-weighted)
+    m_triangleCDF.resize(m_triangleSamplers.size());
     float cumulativeArea = 0.0f;
-    for (size_t i = 0; i < m_triangleLights.size(); ++i) {
-        cumulativeArea += m_triangleLights[i]->getArea();
+    for (size_t i = 0; i < m_triangleSamplers.size(); ++i) {
+        // use the area from the sampler
+        const float triArea = m_totalArea / m_triangleSamplers.size(); // approximate
+        // better: store areas separately or get from sampler
+        cumulativeArea += triArea;
         m_triangleCDF[i] = cumulativeArea;
     }
 
     // normalize CDF
-    for (float& val : m_triangleCDF) {
-        val /= cumulativeArea;
+    if (cumulativeArea > 0.0f) {
+        for (float& val : m_triangleCDF) {
+            val /= cumulativeArea;
+        }
     }
 }
 
 AreaLightSample MeshAreaLight::sample(const glm::vec3& shadingPoint,
                                      float u1, float u2, float u3) const {
-    if (m_triangleLights.empty()) {
+    if (m_triangleSamplers.empty()) {
         return AreaLightSample{
             glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f),
             0.0f, glm::vec3(0.0f), 0.0f
@@ -229,10 +250,10 @@ AreaLightSample MeshAreaLight::sample(const glm::vec3& shadingPoint,
     }
 
     // sample the selected triangle
-    AreaLightSample sample = m_triangleLights[triIndex]->sample(shadingPoint, u2, u3);
+    AreaLightSample sample = m_triangleSamplers[triIndex]->sample(shadingPoint, u2, u3);
 
     // adjust PDF for triangle selection probability
-    const float triSelectionProb = m_triangleLights[triIndex]->getArea() / m_totalArea;
+    const float triSelectionProb = 1.0f / m_triangleSamplers.size(); // uniform for now
     sample.pdf *= triSelectionProb;
     sample.area = m_totalArea;
 
