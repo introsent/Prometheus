@@ -88,6 +88,88 @@ void SceneManager::addLight(Light* light) {
     m_lights.push_back(std::unique_ptr<Light>(light));
 }
 
+unsigned int SceneManager::addTriangleAreaLight(const std::vector<Vertex>& vertices, const glm::vec3& emission,
+    float intensity, unsigned char materialId)
+{
+    // add triangle geometry
+    unsigned int triIndex = addTriangle(vertices, materialId);
+
+    // create the area light
+    auto areaLight = std::make_unique<TriangleAreaLight>(triIndex, emission, intensity, this);
+
+    // create Light structure for it
+    auto* light = new Light();
+    light->type = LightType::TriangleArea;
+    light->color = emission;
+    light->intensity = intensity;
+    light->triangleAreaLight = areaLight.get();
+
+    // calculate centroid for light origin
+    if (vertices.size() >= 3) {
+        glm::vec3 centroid(0.0f);
+        for (size_t i = 0; i < 3; ++i) {
+            centroid.x += vertices[i].position.x;
+            centroid.y += vertices[i].position.y;
+            centroid.z += vertices[i].position.z;
+        }
+        centroid /= 3.0f;
+        light->origin = centroid;
+        light->direction = areaLight->getNormal();
+    }
+
+    addLight(light);
+
+    const auto lightIndex = static_cast<unsigned int>(m_triangleAreaLights.size());
+    m_triangleAreaLights.push_back(std::move(areaLight));
+
+    return lightIndex;
+}
+
+unsigned int SceneManager::addMeshAreaLight(const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices,
+    const glm::vec3& emission, float intensity, unsigned char materialId)
+{
+    unsigned int meshIndex = addMesh(vertices, indices, materialId);
+
+    // create the area light
+    auto areaLight = std::make_unique<MeshAreaLight>(meshIndex, emission, intensity, this);
+
+    // create Light structure for it
+    auto* light = new Light();
+    light->type = LightType::MeshArea;
+    light->color = emission;
+    light->intensity = intensity;
+    light->meshAreaLight = areaLight.get();
+
+    // calculate centroid for light origin
+    if (!vertices.empty()) {
+        glm::vec3 centroid(0.0f);
+        for (const auto& v : vertices) {
+            centroid.x += v.position.x;
+            centroid.y += v.position.y;
+            centroid.z += v.position.z;
+        }
+        centroid /= static_cast<float>(vertices.size());
+        light->origin = centroid;
+    }
+
+    addLight(light);
+
+    const auto lightIndex = static_cast<unsigned int>(m_meshAreaLights.size());
+    m_meshAreaLights.push_back(std::move(areaLight));
+
+    return lightIndex;
+}
+
+void SceneManager::setAreaLightSamplingStrategy(SamplingStrategy strategy) const
+{
+    for (auto& areaLight : m_triangleAreaLights) {
+        areaLight->setSamplingStrategy(strategy);
+    }
+    for (auto& areaLight : m_meshAreaLights) {
+        areaLight->setSamplingStrategy(strategy);
+    }
+}
+
 void SceneManager::commit() {
     if (m_needsCommit) {
         m_scenePtr->commit();

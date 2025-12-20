@@ -7,6 +7,8 @@
 #include <memory>
 #include <unordered_map>
 #include <vector>
+
+#include "area_light.h"
 #include "embree_scene.h"
 #include "light.h"
 #include "material.h"
@@ -33,6 +35,19 @@ public:
     unsigned addMesh(const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices, unsigned char materialId);
     void addLight(Light* light);
 
+    unsigned int addTriangleAreaLight(const std::vector<Vertex>& vertices,
+                                 const glm::vec3& emission,
+                                 float intensity,
+                                 unsigned char materialId = 0);
+
+    unsigned int addMeshAreaLight(const std::vector<Vertex>& vertices,
+                                 const std::vector<uint32_t>& indices,
+                                 const glm::vec3& emission,
+                                 float intensity,
+                                 unsigned char materialId = 0);
+
+    void setAreaLightSamplingStrategy(SamplingStrategy strategy) const;
+
     void commit();
     void markDirty() { m_needsCommit = true; }
 
@@ -53,6 +68,15 @@ public:
     [[nodiscard]] Mesh* getMesh(unsigned int meshIndex) const;
     [[nodiscard]] size_t getMeshCount() const;
 
+    // Get area lights
+    [[nodiscard]] const std::vector<std::unique_ptr<TriangleAreaLight>>& getTriangleAreaLights() const {
+        return m_triangleAreaLights;
+    }
+    [[nodiscard]] const std::vector<std::unique_ptr<MeshAreaLight>>& getMeshAreaLights() const {
+        return m_meshAreaLights;
+    }
+
+
 private:
     std::unique_ptr<EmbreeDevice> m_devicePtr;
     std::unique_ptr<EmbreeScene> m_scenePtr;
@@ -61,6 +85,9 @@ private:
     std::vector<std::unique_ptr<Light>> m_lights;
     std::vector<unsigned char> m_geometryMaterials;
     std::unordered_map<unsigned, RTCGeometryType> m_geometryTypes;
+
+    std::vector<std::unique_ptr<TriangleAreaLight>> m_triangleAreaLights;
+    std::vector<std::unique_ptr<MeshAreaLight>> m_meshAreaLights;
 
     std::vector<size_t> m_triangleIndices;
     std::vector<size_t> m_meshIndices;

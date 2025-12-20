@@ -225,6 +225,38 @@ void createBunnyScene(SceneManager* pScene)
     ));
 }
 
+void createSceneA(SceneManager* pScene)
+{
+    // Lambert materials for room
+    const unsigned char matLambert_GrayBlue = pScene->addMaterial(
+        new Material_Lambert(glm::vec3(0.49f, 0.57f, 0.57f), 1.f));
+
+    // Room planes (same as reference scene)
+    pScene->addPlane({0.f, 0.f, 10.f}, {0.f, 0.f, -1.f}, matLambert_GrayBlue);   // BACK
+    pScene->addPlane({0.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, matLambert_GrayBlue);     // BOTTOM
+    pScene->addPlane({0.f, 10.f, 0.f}, {0.f, -1.f, 0.f}, matLambert_GrayBlue);   // TOP
+    pScene->addPlane({5.f, 0.f, 0.f}, {-1.f, 0.f, 0.f}, matLambert_GrayBlue);    // RIGHT
+    pScene->addPlane({-5.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, matLambert_GrayBlue);    // LEFT
+
+    std::vector<Vertex> ceilingLight_tri1 = {
+        {{-2.0f, 9.99f, 3.0f}, {0.0f, -1.0f, 0.0f}},  // Front-left
+        {{ 2.0f, 9.99f, 3.0f}, {0.0f, -1.0f, 0.0f}},  // Front-right
+        {{ 2.0f, 9.99f, 7.0f}, {0.0f, -1.0f, 0.0f}}   // Back-right
+    };
+
+    std::vector<Vertex> ceilingLight_tri2 = {
+        {{-2.0f, 9.99f, 3.0f}, {0.0f, -1.0f, 0.0f}},  // Front-left
+        {{ 2.0f, 9.99f, 7.0f}, {0.0f, -1.0f, 0.0f}},  // Back-right
+        {{-2.0f, 9.99f, 7.0f}, {0.0f, -1.0f, 0.0f}}   // Back-left
+    };
+
+    glm::vec3 emission(1.0f, 0.0f, 0.0f);
+    float intensity = 20.0f;  // higher intensity for smaller area
+
+    pScene->addTriangleAreaLight(ceilingLight_tri1, emission, intensity);
+    pScene->addTriangleAreaLight(ceilingLight_tri2, emission, intensity);
+}
+
 
 int main(int argc, char* args[])
 {
@@ -249,7 +281,7 @@ int main(int argc, char* args[])
     auto pCamera = std::make_unique<Camera>(glm::vec3{0.f, 3.f, -9.f},
                                             45.f,
                                             static_cast<float>(WIDTH) / static_cast<float>(HEIGHT));
-    createBunnyScene(pScene.get());
+    createSceneA(pScene.get());
     pScene->commit();
 
 

@@ -142,6 +142,8 @@ add_executable(Prometheus
         src/geometries/mesh.cpp
         src/geometries/mesh.h
         src/parser/obj_parser.h
+        src/structs/area_light.cpp
+        src/structs/area_light.h
 )
 
 # Copy resources to output folder

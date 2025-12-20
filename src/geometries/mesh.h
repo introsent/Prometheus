@@ -17,6 +17,9 @@ public:
 
     void updateAABB() override;
 
+    [[nodiscard]] const std::vector<Vertex>& getOriginalVertices() const { return m_originalVertices; }
+    [[nodiscard]] const std::vector<uint32_t>& getIndices() const { return m_indices; }
+
 private:
     std::vector<Vertex> m_originalVertices;
     std::vector<uint32_t> m_indices;

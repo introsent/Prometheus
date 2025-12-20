@@ -12,6 +12,7 @@ class Triangle : public Geometry {
 public:
     Triangle(SceneManager* scene, const std::vector<Vertex>& vertices, const EmbreeDevice* devicePtr);
 
+    [[nodiscard]] const std::vector<Vertex>& getOriginalVertices() const { return m_originalVertices; }
     void updateAABB() override;
 
 private:
