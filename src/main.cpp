@@ -299,10 +299,10 @@ void createSceneB(SceneManager* pScene)
         }
 
         // define emission properties
-        glm::vec3 emission(1.0f, 0.0f, 0.0f);
+        glm::vec3 emission(1.0f, 1.0f, 1.0f);
         float intensity = 10.0f;  // high intensity since bunny is the only light source
 
-        // Add bunny as a MESH AREA LIGHT
+        // add bunny as a MESH AREA LIGHT
         pScene->addMeshAreaLight(
             bunnyVertices,
             bunnyIndices,

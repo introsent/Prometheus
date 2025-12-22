@@ -50,13 +50,13 @@ AreaLightSample UniformTriangleSampler::sample(const glm::vec3& shadingPoint,
 
 float UniformTriangleSampler::pdf(const glm::vec3& shadingPoint,
                                   const glm::vec3& lightPoint) const {
-    // Uniform sampling: constant PDF = 1/Area
+    // uniform sampling: constant PDF = 1/Area
     return 1.0f / m_area;
 }
 
 float UniformTriangleSampler::getTotalFlux() const {
-    // Power = Emission * Intensity * Area * π (for Lambertian)
-    // For simplicity: Power = avg(emission) * intensity * area
+    // power = emission * intensity * area * pi (for Lambertian)
+    // for simplicity: power = avg(emission) * intensity * area
     const float avgEmission = (m_emission.r + m_emission.g + m_emission.b) / 3.0f;
     return avgEmission * m_intensity * m_area;
 }
