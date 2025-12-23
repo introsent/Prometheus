@@ -87,10 +87,13 @@ AreaLightSample AreaImportanceTriangleSampler::sample(const glm::vec3& shadingPo
 
     if (pdfSolidAngle <= 0.0f) {
         // degenerate: fallback to centroid
-        glm::vec3 centroid = (m_v0 + m_v1 + m_v2) / 3.0f;  // compute centroid as average of vertices for fallback position
-        glm::vec3 toCentroid = centroid - shadingPoint;  // vector from shading point to centroid
-        float r = glm::length(toCentroid);  // distance from shading point to centroid
+
+        // compute centroid as average of vertices for fallback position
+        glm::vec3 centroid = (m_v0 + m_v1 + m_v2) / 3.0f;
+        glm::vec3 toCentroid = centroid - shadingPoint;
+        float r = glm::length(toCentroid);
         if (r <= 0.0f) return {shadingPoint, m_normal, 0.0f, glm::vec3(0), m_area};
+
         direction = toCentroid / r;  // normalize direction to unit vector
         pdfSolidAngle = 1.0f;  // arbitrary for fallback
     }
@@ -108,16 +111,18 @@ AreaLightSample AreaImportanceTriangleSampler::sample(const glm::vec3& shadingPo
     // compute position on triangle
     glm::vec3 position = bary.x * m_v0 + bary.y * m_v1 + bary.z * m_v2;  // weighted sum of vertices using barycentric coordinates
 
-    glm::vec3 fromLightToShading = shadingPoint - position;  // vector from light position to shading point
-    float r = glm::length(fromLightToShading);  // distance between light position and shading point
+    glm::vec3 fromLightToShading = shadingPoint - position;
+    float r = glm::length(fromLightToShading);
     if (r <= 0.0f) return {position, m_normal, 0.0f, glm::vec3(0), m_area};  // degenerate
 
-    glm::vec3 dirToShading = fromLightToShading / r;  // normalize vector to unit direction from light to shading
-    float cos_theta_light = glm::dot(m_normal, dirToShading);  // cosine of angle between light normal and direction to shading point
+    glm::vec3 dirToShading = fromLightToShading / r;
+    // cosine of angle between light normal and direction to shading point
+    float cos_theta_light = glm::dot(m_normal, dirToShading);
 
     if (cos_theta_light <= 0.0f) return {position, m_normal, 0.0f, glm::vec3(0), m_area};
 
-    float pdfArea = pdfSolidAngle * (cos_theta_light / (r * r));  // convert solid-angle pdf to area pdf using jacobian: dA = dw * (r^2 / cos_theta_light)
+    // convert solid-angle pdf to area pdf using jacobian: dA = dw * (r^2 / cos_theta_light)
+    float pdfArea = pdfSolidAngle * (cos_theta_light / (r * r));
 
     return {
         position,
@@ -134,17 +139,22 @@ float AreaImportanceTriangleSampler::pdf(const glm::vec3& shadingPoint,
     const float solidAngle = calculateSolidAngle(shadingPoint);
     if (solidAngle <= 0.0f) return 0.0f;
 
-    glm::vec3 fromLightToShading = shadingPoint - lightPoint;  // vector from light point to shading point
-    float r = glm::length(fromLightToShading);  // distance between points
+    // vector from light point to shading point
+    glm::vec3 fromLightToShading = shadingPoint - lightPoint;
+    float r = glm::length(fromLightToShading);
     if (r <= 0.0f) return 0.0f;
 
-    glm::vec3 dirToShading = fromLightToShading / r;  // normalize to unit vector
+    // normalize to unit vector
+    glm::vec3 dirToShading = fromLightToShading / r;
 
-    float cos_theta_light = glm::dot(m_normal, dirToShading);  // cosine of angle at light point
+    // cosine of angle at light point
+    float cos_theta_light = glm::dot(m_normal, dirToShading);
     if (cos_theta_light <= 0.0f) return 0.0f;
 
-    float pdfSolidAngle = 1.0f / solidAngle;  // uniform pdf over solid angle: 1 / omega
-    return pdfSolidAngle * (cos_theta_light / (r * r));  // transform to area pdf: pdf_area = pdf_solid * (cos_theta_light / r^2)
+    // uniform pdf over solid angle: 1 / omega
+    float pdfSolidAngle = 1.0f / solidAngle;
+    // transform to area pdf: pdf_area = pdf_solid * (cos_theta_light / r^2)
+    return pdfSolidAngle * (cos_theta_light / (r * r));
 }
 
 float AreaImportanceTriangleSampler::getTotalFlux() const {
@@ -214,9 +224,9 @@ float AreaImportanceTriangleSampler::calculateSolidAngle(const glm::vec3 &p) con
 
 glm::vec3 AreaImportanceTriangleSampler::sampleSphericalTriangle(const glm::vec3 &p, float u1, float u2,
     float *outPdf) const {
-        glm::vec3 a = m_v0 - p;  // vector from p to vertex 0
-        glm::vec3 b = m_v1 - p;  // vector from p to vertex 1
-        glm::vec3 c = m_v2 - p;  // vector from p to vertex 2
+        glm::vec3 a = m_v0 - p;
+        glm::vec3 b = m_v1 - p;
+        glm::vec3 c = m_v2 - p;
 
         float la = glm::length(a), lb = glm::length(b), lc = glm::length(c);  // lengths of vectors to vertices
         if (la <= 0.0f || lb <= 0.0f || lc <= 0.0f) {
@@ -225,9 +235,10 @@ glm::vec3 AreaImportanceTriangleSampler::sampleSphericalTriangle(const glm::vec3
         }
         a /= la; b /= lb; c /= lc;  // normalize vectors to unit sphere
 
-        glm::vec3 n_ab = glm::cross(a, b);  // normal to great circle arc between a and b
-        glm::vec3 n_bc = glm::cross(b, c);  // normal to arc between b and c
-        glm::vec3 n_ca = glm::cross(c, a);  // normal to arc between c and a
+        // normal to great circle arcs
+        glm::vec3 n_ab = glm::cross(a, b);
+        glm::vec3 n_bc = glm::cross(b, c);
+        glm::vec3 n_ca = glm::cross(c, a);
 
         constexpr float eps = 1e-10f;
         if (glm::dot(n_ab, n_ab) <= eps || glm::dot(n_bc, n_bc) <= eps || glm::dot(n_ca, n_ca) <= eps) {  // check for degenerate arcs (near-zero length)
@@ -235,58 +246,76 @@ glm::vec3 AreaImportanceTriangleSampler::sampleSphericalTriangle(const glm::vec3
             return glm::normalize(a + b + c);  // fallback to normalized average direction
         }
 
-        n_ab = glm::normalize(n_ab);  // unit normal for arc ab
-        n_bc = glm::normalize(n_bc);  // unit normal for arc bc
-        n_ca = glm::normalize(n_ca);  // unit normal for arc ca
+        // unit normal for arc
+        n_ab = glm::normalize(n_ab);
+        n_bc = glm::normalize(n_bc);
+        n_ca = glm::normalize(n_ca);
 
-        float alpha = safeAcos(glm::dot(n_ab, -n_ca));  // spherical angle at vertex a (arvo's method: angle between planes)
-        float beta = safeAcos(glm::dot(n_bc, -n_ab));  // angle at vertex b
-        float gamma = safeAcos(glm::dot(n_ca, -n_bc));  // angle at vertex c
+        // spherical angle at vertices (arvo's method: angle between planes)
+        float alpha = safeAcos(glm::dot(n_ab, -n_ca));
+        float beta = safeAcos(glm::dot(n_bc, -n_ab));
+        float gamma = safeAcos(glm::dot(n_ca, -n_bc));
 
-        float A_pi = alpha + beta + gamma;  // sum of spherical angles
-        float Omega = A_pi - glm::pi<float>();  // spherical excess: solid angle omega = alpha + beta + gamma - pi
+        // sum of spherical angles
+        float A_pi = alpha + beta + gamma;
+        // spherical excess: solid angle omega = alpha + beta + gamma - pi
+        float Omega = A_pi - glm::pi<float>();
         if (Omega <= 0.0f) {
             if (outPdf) *outPdf = 0.0f;
             return glm::normalize(a + b + c);  // degenerate solid angle
         }
+        // uniform pdf over solid angle
+        if (outPdf) *outPdf = 1.0f / Omega;
 
-        if (outPdf) *outPdf = 1.0f / Omega;  // uniform pdf over solid angle
+        // map u1 to angle in [pi, A_pi] for marginal sampling
+        float Ap_pi = glm::pi<float>() + u1 * (A_pi - glm::pi<float>());
 
-        float Ap_pi = glm::pi<float>() + u1 * (A_pi - glm::pi<float>());  // map u1 to angle in [pi, A_pi] for marginal sampling
-
+        // precompute trig for alpha
         float cosAlpha = std::cos(alpha);
-        float sinAlpha = std::sin(alpha);  // precompute trig for alpha
+        float sinAlpha = std::sin(alpha);
+
+        // trig for adjusted angle Ap_pi
         float sinAp = std::sin(Ap_pi);
-        float cosAp = std::cos(Ap_pi);  // trig for adjusted angle Ap_pi
+        float cosAp = std::cos(Ap_pi);
 
-        float sinPhi = sinAp * cosAlpha - cosAp * sinAlpha;  // sin(phi) using angle subtraction formula
-        float cosPhi = cosAp * cosAlpha + sinAp * sinAlpha;  // cos(phi) using angle addition
+        // sin(phi) using angle subtraction formula
+        float sinPhi = sinAp * cosAlpha - cosAp * sinAlpha;
+        // cos(phi) using angle addition
+        float cosPhi = cosAp * cosAlpha + sinAp * sinAlpha;
 
-        float cosc = glm::dot(a, b);  // cosine of spherical side c (angle between a and b)
+        // cosine of spherical side c (angle between a and b)
+        float cosc = glm::dot(a, b);
 
-        float k1 = cosPhi + cosAlpha;  // intermediate for spherical trig identity
-        float k2 = sinPhi - sinAlpha * cosc;  // another intermediate
-
-        float denominator = (k2 * sinPhi + k1 * cosPhi) * sinAlpha;  // denom for cos(Bp) in spherical law of cosines
-        float numer = k2 + (k2 * cosPhi - k1 * sinPhi) * cosAlpha;  // numerator for cos(Bp)
+        float k1 = cosPhi + cosAlpha;
+        float k2 = sinPhi - sinAlpha * cosc;
+        // denominator for cos(Bp) in spherical law of cosines
+        float denominator = (k2 * sinPhi + k1 * cosPhi) * sinAlpha;
+        // numerator for cos(Bp)
+        float numerator = k2 + (k2 * cosPhi - k1 * sinPhi) * cosAlpha;
 
         float cosBp = (std::abs(denominator) < 1e-10f) ? clampf(cosc * (1.0f - u1) + glm::dot(c, b) * u1, -1.0f, 1.0f)
-                                                 : clampf(numer / denominator, -1.0f, 1.0f);
+                                                 : clampf(numerator / denominator, -1.0f, 1.0f);
         // cos of angle Bp, with fallback linear interp
 
         float sinBp = safeSqrt(1.0f - cosBp * cosBp);  // sin(Bp) from trig identity
 
-        glm::vec3 axis_ac = gramSchmidtNormalize(c, a);  // orthogonalize to get basis vector perpendicular to a in plane of a and c
-        glm::vec3 cp = cosBp * a + sinBp * axis_ac;  // point cp on arc from a to projection
-        cp = glm::normalize(cp);  // ensure unit length
+        // orthogonalize to get basis vector perpendicular to a in plane of a and c
+        glm::vec3 axis_ac = gramSchmidtNormalize(c, a);
+        // point cp on arc from a to projection
+        glm::vec3 cp = cosBp * a + sinBp * axis_ac;
+        cp = glm::normalize(cp);
 
-        float dot_cp_b = glm::dot(cp, b);  // cosine of angle between cp and b
-        float cosTheta = clampf(1.0f - u2 * (1.0f - dot_cp_b), -1.0f, 1.0f);  // map u2 to cos(theta) along arc
-        float sinTheta = safeSqrt(1.0f - cosTheta * cosTheta);  // sin(theta)
+        // cosine of angle between cp and b
+        float dot_cp_b = glm::dot(cp, b);
+        // map u2 to cos(theta) along arc
+        float cosTheta = clampf(1.0f - u2 * (1.0f - dot_cp_b), -1.0f, 1.0f);
+        float sinTheta = safeSqrt(1.0f - cosTheta * cosTheta);
 
-        glm::vec3 axis_bp = gramSchmidtNormalize(cp, b);  // orthogonal basis for rotation around b
-        glm::vec3 w = cosTheta * b + sinTheta * axis_bp;  // rotate around b by theta
-        return glm::normalize(w);  // final sampled direction
+        // orthogonal basis for rotation around b
+        glm::vec3 axis_bp = gramSchmidtNormalize(cp, b);
+        // rotate around b by theta
+        glm::vec3 w = cosTheta * b + sinTheta * axis_bp;
+        return glm::normalize(w);
 }
 
 glm::vec3 AreaImportanceTriangleSampler::computeBarycentricsFromDirection(const glm::vec3 &origin,

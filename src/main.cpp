@@ -239,15 +239,15 @@ void createSceneA(SceneManager* pScene)
     pScene->addPlane({-5.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, matLambert_GrayBlue);    // LEFT
 
     std::vector<Vertex> ceilingLight_tri1 = {
-        {{-2.0f, 9.99f, 3.0f}, {0.0f, -1.0f, 0.0f}},  // Front-left
-        {{ 2.0f, 9.99f, 3.0f}, {0.0f, -1.0f, 0.0f}},  // Front-right
-        {{ 2.0f, 9.99f, 7.0f}, {0.0f, -1.0f, 0.0f}}   // Back-right
+        {{-2.0f, 9.99999f, 3.0f}, {0.0f, -1.0f, 0.0f}},  // Front-left
+        {{ 2.0f, 9.99999f, 3.0f}, {0.0f, -1.0f, 0.0f}},  // Front-right
+        {{ 2.0f, 9.99999f, 7.0f}, {0.0f, -1.0f, 0.0f}}   // Back-right
     };
 
     std::vector<Vertex> ceilingLight_tri2 = {
-        {{-2.0f, 9.99f, 3.0f}, {0.0f, -1.0f, 0.0f}},  // Front-left
-        {{ 2.0f, 9.99f, 7.0f}, {0.0f, -1.0f, 0.0f}},  // Back-right
-        {{-2.0f, 9.99f, 7.0f}, {0.0f, -1.0f, 0.0f}}   // Back-left
+        {{-2.0f, 9.999f, 3.0f}, {0.0f, -1.0f, 0.0f}},  // Front-left
+        {{ 2.0f, 9.999f, 7.0f}, {0.0f, -1.0f, 0.0f}},  // Back-right
+        {{-2.0f, 9.999f, 7.0f}, {0.0f, -1.0f, 0.0f}}   // Back-left
     };
 
     glm::vec3 emission(1.0f, 0.0f, 0.0f);
