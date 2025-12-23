@@ -80,6 +80,60 @@ private:
     float m_intensity;
 };
 
+// tiny helpers
+static inline float clampf(float x, float a, float b) { return std::max(a, std::min(b, x)); }
+static inline float safeAcos(float x) { return std::acos(clampf(x, -1.0f, 1.0f)); }
+static inline float safeSqrt(float x) { return std::sqrt(std::max(0.0f, x)); }
+
+// Gram-Schmidt: return (v - proj_a(v)) normalized; if near zero, return any perpendicular to a
+static glm::vec3 gramSchmidtNormalize(const glm::vec3 &v, const glm::vec3 &a) {
+    const glm::vec3 proj = a * glm::dot(v, a);
+    glm::vec3 w = v - proj;
+    if (float len2 = glm::dot(w, w); len2 <= 1e-10f) {
+        // fallback: find any vector perpendicular to a
+        const glm::vec3 absA = glm::abs(a);
+        const glm::vec3 other = (absA.x <= absA.y && absA.x <= absA.z) ? glm::vec3(1,0,0)
+                         : (absA.y <= absA.x && absA.y <= absA.z) ? glm::vec3(0,1,0)
+                                                                 : glm::vec3(0,0,1);
+        w = glm::cross(a, other);
+        len2 = glm::dot(w, w);
+        if (len2 <= 1e-10f) return glm::normalize(glm::cross(a, glm::vec3(1,0,0) + 0.0001f)); // last resort
+    }
+    return glm::normalize(w);
+}
+
+class AreaImportanceTriangleSampler : public AreaLightSampler {
+public:
+    AreaImportanceTriangleSampler(const glm::vec3& v0,
+                         const glm::vec3& v1,
+                         const glm::vec3& v2,
+                         const glm::vec3& normal,
+                         float area,
+                         const glm::vec3& emission,
+                         float intensity);
+
+
+    [[nodiscard]] AreaLightSample sample(const glm::vec3& shadingPoint,
+                                         float u1, float u2) const override;
+
+    [[nodiscard]] float pdf(const glm::vec3& shadingPoint,
+             const glm::vec3& lightPoint) const override;
+
+    [[nodiscard]] float getTotalFlux() const override;
+
+private:
+    [[nodiscard]] float calculateSolidAngle(const glm::vec3& p) const;
+    glm::vec3 sampleSphericalTriangle(const glm::vec3& p, float u1, float u2, float* outPdf = nullptr) const;
+
+    [[nodiscard]] glm::vec3 computeBarycentricsFromDirection(const glm::vec3& origin, const glm::vec3& dir) const;
+
+    glm::vec3 m_v0, m_v1, m_v2;
+    glm::vec3 m_normal;
+    float m_area;
+    glm::vec3 m_emission;
+    float m_intensity;
+};
+
 /// Triangle area light
 class TriangleAreaLight
 {

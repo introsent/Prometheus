@@ -92,7 +92,7 @@ unsigned int SceneManager::addTriangleAreaLight(const std::vector<Vertex>& verti
     float intensity, unsigned char materialId)
 {
     // add triangle geometry
-    unsigned char emissiveMat = addMaterial(new Material_SolidColor(emission));
+    unsigned char emissiveMat = addMaterial(new Material_Emissive(emission, intensity));
     unsigned int triIndex = addTriangle(vertices, emissiveMat);
 
     // create the area light
