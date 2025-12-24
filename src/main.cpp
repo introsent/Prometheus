@@ -239,15 +239,15 @@ void createSceneA(SceneManager* pScene)
     pScene->addPlane({-5.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, matLambert_GrayBlue);    // LEFT
 
     std::vector<Vertex> ceilingLight_tri1 = {
-        {{-2.0f, 9.99999f, 3.0f}, {0.0f, -1.0f, 0.0f}},  // Front-left
-        {{ 2.0f, 9.99999f, 3.0f}, {0.0f, -1.0f, 0.0f}},  // Front-right
-        {{ 2.0f, 9.99999f, 7.0f}, {0.0f, -1.0f, 0.0f}}   // Back-right
+        {{-2.0f, 9.99f, 3.0f}, {0.0f, -1.0f, 0.0f}},  // Front-left
+        {{ 2.0f, 9.99f, 3.0f}, {0.0f, -1.0f, 0.0f}},  // Front-right
+        {{ 2.0f, 9.99f, 7.0f}, {0.0f, -1.0f, 0.0f}}   // Back-right
     };
 
     std::vector<Vertex> ceilingLight_tri2 = {
-        {{-2.0f, 9.999f, 3.0f}, {0.0f, -1.0f, 0.0f}},  // Front-left
-        {{ 2.0f, 9.999f, 7.0f}, {0.0f, -1.0f, 0.0f}},  // Back-right
-        {{-2.0f, 9.999f, 7.0f}, {0.0f, -1.0f, 0.0f}}   // Back-left
+        {{-2.0f, 9.99f, 3.0f}, {0.0f, -1.0f, 0.0f}},  // Front-left
+        {{ 2.0f, 9.99f, 7.0f}, {0.0f, -1.0f, 0.0f}},  // Back-right
+        {{-2.0f, 9.99f, 7.0f}, {0.0f, -1.0f, 0.0f}}   // Back-left
     };
 
     glm::vec3 emission(1.0f, 0.0f, 0.0f);
@@ -277,7 +277,7 @@ void createSceneB(SceneManager* pScene)
     if (ParseOBJ("resources/lowpoly_bunny.obj", bunnyVertices, bunnyIndices)) {
 
         // apply transformations to vertices BEFORE adding as area light
-        glm::mat4 transform = glm::mat4(1.0f);
+        auto transform = glm::mat4(1.0f);
         transform = glm::rotate(transform, glm::radians(180.0f), glm::vec3(0.f, 1.f, 0.f));
         transform = glm::scale(transform, glm::vec3(2.f, 2.f, 2.f));
 
@@ -341,7 +341,7 @@ int main(int argc, char* args[])
     auto pCamera = std::make_unique<Camera>(glm::vec3{0.f, 3.f, -9.f},
                                             45.f,
                                             static_cast<float>(WIDTH) / static_cast<float>(HEIGHT));
-    createSceneA(pScene.get());
+    createSceneB(pScene.get());
     pScene->commit();
 
 

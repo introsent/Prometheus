@@ -83,46 +83,33 @@ AreaLightSample AreaImportanceTriangleSampler::sample(const glm::vec3& shadingPo
                                                float u1, float u2) const {
     // sample direction using solid angle (spherical triangle projection)
     float pdfSolidAngle = 0.0f;
-    glm::vec3 direction = sampleSphericalTriangle(shadingPoint, u1, u2, &pdfSolidAngle);
+    const glm::vec3 direction = sampleSphericalTriangle(shadingPoint, u1, u2, &pdfSolidAngle);
 
     if (pdfSolidAngle <= 0.0f) {
-        // degenerate: fallback to centroid
-
-        // compute centroid as average of vertices for fallback position
-        glm::vec3 centroid = (m_v0 + m_v1 + m_v2) / 3.0f;
-        glm::vec3 toCentroid = centroid - shadingPoint;
-        float r = glm::length(toCentroid);
-        if (r <= 0.0f) return {shadingPoint, m_normal, 0.0f, glm::vec3(0), m_area};
-
-        direction = toCentroid / r;  // normalize direction to unit vector
-        pdfSolidAngle = 1.0f;  // arbitrary for fallback
+        return {shadingPoint, m_normal, 0.0f, glm::vec3(0), m_area};
     }
 
-    // compute barycentric coordinates from direction (stable projection back to plane)
-    glm::vec3 bary = computeBarycentricsFromDirection(shadingPoint, direction);
-    float sum = bary.x + bary.y + bary.z;  // sum of barycentric coordinates (should ideally be 1)
-    if (sum > 0.0f) {
-        bary /= sum;  // normalize by dividing each coordinate by the sum to ensure they add to 1
-    } else {
-        // rare degenerate case: fallback to centroid
-        bary = glm::vec3(1.0f / 3.0f);  // uniform barycentric coordinates for centroid
+    // intersect ray with triangle plane to get exact position
+    auto [t, position] = getRayPlaneIntersection(shadingPoint, direction);
+    if (position == glm::vec3(0.f)) {
+        return {shadingPoint, m_normal, 0.0f, glm::vec3(0), m_area};
     }
+    //recomputePositionUsingBarycentricCoordinates(t, position);
 
-    // compute position on triangle
-    glm::vec3 position = bary.x * m_v0 + bary.y * m_v1 + bary.z * m_v2;  // weighted sum of vertices using barycentric coordinates
+    // use the ray parameter t directly for distance (more numerically stable)
+    float r = t;
+    if (r <= 1e-6f) return {position, m_normal, 0.0f, glm::vec3(0), m_area};
 
-    glm::vec3 fromLightToShading = shadingPoint - position;
-    float r = glm::length(fromLightToShading);
-    if (r <= 0.0f) return {position, m_normal, 0.0f, glm::vec3(0), m_area};  // degenerate
-
-    glm::vec3 dirToShading = fromLightToShading / r;
-    // cosine of angle between light normal and direction to shading point
-    float cos_theta_light = glm::dot(m_normal, dirToShading);
+    // cosine at light (direction is already normalized)
+    const float cos_theta_light = glm::dot(m_normal, -direction);
 
     if (cos_theta_light <= 0.0f) return {position, m_normal, 0.0f, glm::vec3(0), m_area};
 
-    // convert solid-angle pdf to area pdf using jacobian: dA = dw * (r^2 / cos_theta_light)
+    // convert solid-angle pdf to area pdf using jacobian
     float pdfArea = pdfSolidAngle * (cos_theta_light / (r * r));
+    if (!std::isfinite(pdfArea) || pdfArea <= 0.0f) {
+        return {position, m_normal, 0.0f, glm::vec3(0), m_area};
+    }
 
     return {
         position,
@@ -293,8 +280,8 @@ glm::vec3 AreaImportanceTriangleSampler::sampleSphericalTriangle(const glm::vec3
         // numerator for cos(Bp)
         float numerator = k2 + (k2 * cosPhi - k1 * sinPhi) * cosAlpha;
 
-        float cosBp = (std::abs(denominator) < 1e-10f) ? clampf(cosc * (1.0f - u1) + glm::dot(c, b) * u1, -1.0f, 1.0f)
-                                                 : clampf(numerator / denominator, -1.0f, 1.0f);
+        float cosBp = (std::abs(denominator) < 1e-10f) ? std::clamp(cosc * (1.0f - u1) + glm::dot(c, b) * u1, -1.0f, 1.0f)
+                                                 : std::clamp(numerator / denominator, -1.0f, 1.0f);
         // cos of angle Bp, with fallback linear interp
 
         float sinBp = safeSqrt(1.0f - cosBp * cosBp);  // sin(Bp) from trig identity
@@ -308,7 +295,7 @@ glm::vec3 AreaImportanceTriangleSampler::sampleSphericalTriangle(const glm::vec3
         // cosine of angle between cp and b
         float dot_cp_b = glm::dot(cp, b);
         // map u2 to cos(theta) along arc
-        float cosTheta = clampf(1.0f - u2 * (1.0f - dot_cp_b), -1.0f, 1.0f);
+        float cosTheta = std::clamp(1.0f - u2 * (1.0f - dot_cp_b), -1.0f, 1.0f);
         float sinTheta = safeSqrt(1.0f - cosTheta * cosTheta);
 
         // orthogonal basis for rotation around b
@@ -318,33 +305,55 @@ glm::vec3 AreaImportanceTriangleSampler::sampleSphericalTriangle(const glm::vec3
         return glm::normalize(w);
 }
 
-glm::vec3 AreaImportanceTriangleSampler::computeBarycentricsFromDirection(const glm::vec3 &origin,
-const glm::vec3 &dir) const {
-    // moller-trumbore barycentrics (without t, since intersection is guaranteed by sampling)
-    const glm::vec3 e1 = m_v1 - m_v0;  // edge vector from v0 to v1
-    const glm::vec3 e2 = m_v2 - m_v0;  // edge vector from v0 to v2
-
-    const glm::vec3 s1 = glm::cross(dir, e2);  // cross product for perpendicular vector (part of determinant computation)
-    const float divisor = glm::dot(s1, e1);  // determinant of matrix [dir, e2, e1] for barycentric solve
-    if (std::abs(divisor) < 1e-10f) {
-        // degenerate: fallback to uniform bary (centroid)
-        return glm::vec3(1.0f / 3.0f);
+std::pair<float, glm::vec3> AreaImportanceTriangleSampler::getRayPlaneIntersection(const glm::vec3& shadingPoint, const glm::vec3& direction) const
+{
+    float denominator = glm::dot(m_normal, direction);
+    if (std::abs(denominator) < 1e-6f) {
+        // ray parallel to plane - degenerate
+        return {0.f, {0.f, 0.f, 0.f}};
     }
-    const float invDivisor = 1.0f / divisor;  // inverse determinant for scaling
 
-    const glm::vec3 s = origin - m_v0;  // vector from v0 to ray origin
-    float b1 = glm::dot(s, s1) * invDivisor;  // barycentric u = det([s, dir, e2]) / det
-    float b2 = glm::dot(dir, glm::cross(s, e1)) * invDivisor;  // barycentric v = det([s, e1, dir]) / det (note cross order for sign)
+    float t = glm::dot(m_v0 - shadingPoint, m_normal) / denominator;
+    if (t <= 0.0f) {
+        // intersection behind origin - should not happen but safety check
+        return {0.f, {0.f, 0.f, 0.f}};
+    }
 
-    b1 = clampf(b1, 0.0f, 1.0f);  // clamp to triangle bounds
-    b2 = clampf(b2, 0.0f, 1.0f);  // clamp to triangle bounds
-    if (b1 + b2 > 1.0f) {
-        const float sum = b1 + b2;
-        b1 /= sum;  // renormalize if outside (project to edge)
+    // compute exact intersection point
+    return {t, shadingPoint + t * direction};
+}
+
+void AreaImportanceTriangleSampler::recomputePositionUsingBarycentricCoordinates(float t, glm::vec3 &position) const {
+    // compute barycentric coordinates of position
+    glm::vec3 v0v1 = m_v1 - m_v0;
+    glm::vec3 v0v2 = m_v2 - m_v0;
+    glm::vec3 v0p = position - m_v0;
+
+    float d00 = glm::dot(v0v1, v0v1);
+    float d01 = glm::dot(v0v1, v0v2);
+    float d11 = glm::dot(v0v2, v0v2);
+    float d20 = glm::dot(v0p, v0v1);
+    float d21 = glm::dot(v0p, v0v2);
+
+    float invDenom = 1.0f / (d00 * d11 - d01 * d01);
+    float b1 = (d11 * d20 - d01 * d21) * invDenom;
+    float b2 = (d00 * d21 - d01 * d20) * invDenom;
+    float b0 = 1.0f - b1 - b2;
+
+    // clamp to triangle (for numerical safety)
+    b0 = std::max(0.0f, std::min(1.0f, b0));
+    b1 = std::max(0.0f, std::min(1.0f, b1));
+    b2 = std::max(0.0f, std::min(1.0f, b2));
+
+    float sum = b0 + b1 + b2;
+    if (sum > 0.0f) {
+        b0 /= sum;
+        b1 /= sum;
         b2 /= sum;
     }
 
-    return {1.0f - b1 - b2, b1, b2};  // b0 = 1 - b1 - b2
+    // recompute position with clamped barycentrics for consistency
+    position = b0 * m_v0 + b1 * m_v1 + b2 * m_v2;
 }
 
 /// Triangle Area light implementation
@@ -456,20 +465,24 @@ MeshAreaLight::MeshAreaLight(unsigned int meshIndex,
     , m_intensity(intensity)
     , m_totalArea(0.0f)
 {
-    // get mesh and extract triangles
     Mesh* mesh = scene->getMesh(meshIndex);
     if (!mesh) return;
 
     const auto& vertices = mesh->getOriginalVertices();
     const auto& indices = mesh->getIndices();
 
-    // create triangle lights for each face WITHOUT adding to scene
+    // reserve space
+    const size_t numTriangles = indices.size() / 3;
+    m_triangleSamplers.reserve(numTriangles);
+    m_triangleAreas.reserve(numTriangles);
+    m_triangleCDF.reserve(numTriangles);
+
+    // create triangle samplers and store areas
     for (size_t i = 0; i < indices.size(); i += 3) {
         const uint32_t idx0 = indices[i];
         const uint32_t idx1 = indices[i + 1];
         const uint32_t idx2 = indices[i + 2];
 
-        // extract triangle vertices
         const glm::vec3 v0(vertices[idx0].position.x,
                           vertices[idx0].position.y,
                           vertices[idx0].position.z);
@@ -480,38 +493,35 @@ MeshAreaLight::MeshAreaLight(unsigned int meshIndex,
                           vertices[idx2].position.y,
                           vertices[idx2].position.z);
 
-        // calculate normal and area directly
         const glm::vec3 edge1 = v1 - v0;
         const glm::vec3 edge2 = v2 - v0;
         const glm::vec3 crossProd = glm::cross(edge1, edge2);
         const float area = 0.5f * glm::length(crossProd);
-        const glm::vec3 normal = (area > 0.0f) ? glm::normalize(crossProd) : glm::vec3(0, 1, 0);
 
-        // create sampler directly (skip TriangleAreaLight wrapper for now)
-        auto sampler = std::make_unique<UniformTriangleSampler>(
+        // skip degenerate triangles BEFORE adding
+        if (area <= 1e-8f) continue;
+
+        const glm::vec3 normal = glm::normalize(crossProd);
+
+        auto sampler = std::make_unique<AreaImportanceTriangleSampler>(
             v0, v1, v2, normal, area, emission, intensity
         );
 
         m_totalArea += area;
+        m_triangleAreas.push_back(area);
         m_triangleSamplers.push_back(std::move(sampler));
     }
 
-    // build CDF for triangle selection (area-weighted)
-    m_triangleCDF.resize(m_triangleSamplers.size());
-    float cumulativeArea = 0.0f;
-    for (size_t i = 0; i < m_triangleSamplers.size(); ++i) {
-        // use the area from the sampler
-        const float triArea = m_totalArea / m_triangleSamplers.size(); // approximate
-        // better: store areas separately or get from sampler
-        cumulativeArea += triArea;
-        m_triangleCDF[i] = cumulativeArea;
-    }
-
-    // normalize CDF
-    if (cumulativeArea > 0.0f) {
-        for (float& val : m_triangleCDF) {
-            val /= cumulativeArea;
+    // build area-weighted CDF
+    if (!m_triangleSamplers.empty() && m_totalArea > 0.0f) {
+        float cumulativeArea = 0.0f;
+        for (size_t i = 0; i < m_triangleSamplers.size(); ++i) {
+            cumulativeArea += m_triangleAreas[i];
+            m_triangleCDF.push_back(cumulativeArea / m_totalArea); // Normalize during construction
         }
+
+        // ensure last value is exactly 1.0 (handle floating point errors)
+        m_triangleCDF.back() = 1.0f;
     }
 }
 
@@ -524,36 +534,72 @@ AreaLightSample MeshAreaLight::sample(const glm::vec3& shadingPoint,
         };
     }
 
-    // select triangle based on area-weighted CDF
+    // IMPORTANCE SAMPLING: Build per-shading-point CDF based on solid angles
+    std::vector<float> solidAngles;
+    solidAngles.reserve(m_triangleSamplers.size());
+
+    float totalSolidAngle = 0.0f;
+    for (const auto& sampler : m_triangleSamplers) {
+        // cast to access calculateSolidAngle
+        const auto* importanceSampler = dynamic_cast<const AreaImportanceTriangleSampler*>(sampler.get());
+        if (importanceSampler) {
+            float omega = importanceSampler->calculateSolidAngle(shadingPoint);
+            solidAngles.push_back(omega);
+            totalSolidAngle += omega;
+        } else {
+            // Fallback for other sampler types (shouldn't happen with current setup)
+            solidAngles.push_back(m_triangleAreas[solidAngles.size()]);
+            totalSolidAngle += m_triangleAreas[solidAngles.size() - 1];
+        }
+    }
+
+    if (totalSolidAngle <= 0.0f) {
+        return AreaLightSample{
+            glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f),
+            0.0f, glm::vec3(0.0f), 0.0f
+        };
+    }
+
+    // select triangle using solid-angle-based CDF
     size_t triIndex = 0;
-    for (size_t i = 0; i < m_triangleCDF.size(); ++i) {
-        if (u1 <= m_triangleCDF[i]) {
+    float cumulativeSolidAngle = 0.0f;
+    for (size_t i = 0; i < solidAngles.size(); ++i) {
+        cumulativeSolidAngle += solidAngles[i];
+        if (u1 * totalSolidAngle <= cumulativeSolidAngle) {
             triIndex = i;
             break;
         }
     }
 
+    // safety clamp
+    triIndex = std::min(triIndex, m_triangleSamplers.size() - 1);
+
     // sample the selected triangle
     AreaLightSample sample = m_triangleSamplers[triIndex]->sample(shadingPoint, u2, u3);
 
-    // adjust PDF for triangle selection probability
-    const float triSelectionProb = 1.0f / m_triangleSamplers.size(); // uniform for now
+    // update PDF to account for triangle selection probability
+    // probability of selecting this triangle = solidAngle[i] / totalSolidAngle
+    const float triSelectionProb = solidAngles[triIndex] / totalSolidAngle;
     sample.pdf *= triSelectionProb;
+
+    // update area to reflect total mesh area
     sample.area = m_totalArea;
 
     return sample;
 }
 
 float MeshAreaLight::getTotalPower() const {
+    // calculate from samplers, not from empty m_triangleLights!
     float power = 0.0f;
-    for (const auto& triLight : m_triangleLights) {
-        power += triLight->getPower();
+    for (const auto& sampler : m_triangleSamplers) {
+        power += sampler->getTotalFlux();
     }
     return power;
 }
 
 void MeshAreaLight::setSamplingStrategy(SamplingStrategy strategy) const
 {
+    // For now, this only works if you're using m_triangleLights
     for (auto& triLight : m_triangleLights) {
         triLight->setSamplingStrategy(strategy);
     }

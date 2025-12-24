@@ -81,9 +81,9 @@ private:
 };
 
 // tiny helpers
-static inline float clampf(float x, float a, float b) { return std::max(a, std::min(b, x)); }
-static inline float safeAcos(float x) { return std::acos(clampf(x, -1.0f, 1.0f)); }
-static inline float safeSqrt(float x) { return std::sqrt(std::max(0.0f, x)); }
+
+static float safeAcos(float x) { return std::acos(std::clamp(x, -1.0f, 1.0f)); }
+static float safeSqrt(float x) { return std::sqrt(std::max(0.0f, x)); }
 
 // Gram-Schmidt: return (v - proj_a(v)) normalized; if near zero, return any perpendicular to a
 static glm::vec3 gramSchmidtNormalize(const glm::vec3 &v, const glm::vec3 &a) {
@@ -120,13 +120,41 @@ public:
              const glm::vec3& lightPoint) const override;
 
     [[nodiscard]] float getTotalFlux() const override;
+    [[nodiscard]] float calculateSolidAngle(const glm::vec3& p) const;
+private:
+
+    glm::vec3 sampleSphericalTriangle(const glm::vec3& p, float u1, float u2, float* outPdf = nullptr) const;
+    [[nodiscard]] std::pair<float, glm::vec3> getRayPlaneIntersection(const glm::vec3& shadingPoint, const glm::vec3& direction) const;
+    void recomputePositionUsingBarycentricCoordinates(float t, glm::vec3& position) const;
+
+
+    glm::vec3 m_v0, m_v1, m_v2;
+    glm::vec3 m_normal;
+    float m_area;
+    glm::vec3 m_emission;
+    float m_intensity;
+};
+
+class HierarchicalFluxTriangleSampler : public AreaLightSampler {
+public:
+    HierarchicalFluxTriangleSampler(const glm::vec3& v0,
+                         const glm::vec3& v1,
+                         const glm::vec3& v2,
+                         const glm::vec3& normal,
+                         float area,
+                         const glm::vec3& emission,
+                         float intensity);
+
+
+    [[nodiscard]] AreaLightSample sample(const glm::vec3& shadingPoint,
+                                         float u1, float u2) const override;
+
+    [[nodiscard]] float pdf(const glm::vec3& shadingPoint,
+             const glm::vec3& lightPoint) const override;
+
+    [[nodiscard]] float getTotalFlux() const override;
 
 private:
-    [[nodiscard]] float calculateSolidAngle(const glm::vec3& p) const;
-    glm::vec3 sampleSphericalTriangle(const glm::vec3& p, float u1, float u2, float* outPdf = nullptr) const;
-
-    [[nodiscard]] glm::vec3 computeBarycentricsFromDirection(const glm::vec3& origin, const glm::vec3& dir) const;
-
     glm::vec3 m_v0, m_v1, m_v2;
     glm::vec3 m_normal;
     float m_area;
@@ -209,6 +237,7 @@ private:
 
     std::vector<std::unique_ptr<TriangleAreaLight>> m_triangleLights;
     std::vector<std::unique_ptr<AreaLightSampler>> m_triangleSamplers;
+    std::vector<float> m_triangleAreas;
     std::vector<float> m_triangleCDF;  // For importance sampling triangles
     float m_totalArea;
 };
