@@ -5,6 +5,8 @@
 #include <memory>
 
 // Project includes
+#include <fstream>
+
 #include "mesh.h"
 #include "vertex.h"
 #include "render/timer.h"
@@ -68,7 +70,7 @@ void createBaseColorWithLightScene(SceneManager* pScene)
 
 void createReferenceScene(SceneManager* pScene)
 {
-    // Setup Cook-Torrence materials
+    // setup Cook-Torrence materials
     const unsigned char matCT_GrayRoughMetal = pScene->addMaterial(
         new Material_CookTorrence(glm::vec3(0.972f, 0.960f, 0.915f), 1.f, 1.f));
     const unsigned char matCT_GrayMediumMetal = pScene->addMaterial(
@@ -83,37 +85,37 @@ void createReferenceScene(SceneManager* pScene)
     const unsigned char matCT_GraySmoothPlastic = pScene->addMaterial(
         new Material_CookTorrence(glm::vec3(0.75f, 0.75f, 0.75f), 0.f, 0.1f));
 
-    // Lambert materials for room
+    // lambert materials for room
     const unsigned char matLambert_GrayBlue = pScene->addMaterial(
         new Material_Lambert(glm::vec3(0.49f, 0.57f, 0.57f), 1.f));
     const unsigned char matLambert_White = pScene->addMaterial(
         new Material_Lambert(colors::white, 1.f));
 
-    // Room planes
+    // room planes
     pScene->addPlane({0.f, 0.f, 10.f}, {0.f, 0.f, -1.f}, matLambert_GrayBlue);   // BACK
     pScene->addPlane({0.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, matLambert_GrayBlue);     // BOTTOM
     pScene->addPlane({0.f, 10.f, 0.f}, {0.f, -1.f, 0.f}, matLambert_GrayBlue);   // TOP
     pScene->addPlane({5.f, 0.f, 0.f}, {-1.f, 0.f, 0.f}, matLambert_GrayBlue);    // RIGHT
     pScene->addPlane({-5.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, matLambert_GrayBlue);    // LEFT
 
-    // Bottom row spheres (metals with varying roughness)
+    // bottom row spheres (metals with varying roughness)
     pScene->addSphere({-1.75f, 1.f, 0.f}, 0.75f, matCT_GrayRoughMetal);
     pScene->addSphere({0.f, 1.f, 0.f}, 0.75f, matCT_GrayMediumMetal);
     pScene->addSphere({1.75f, 1.f, 0.f}, 0.75f, matCT_GraySmoothMetal);
 
-    // Top row spheres (plastics with varying roughness)
+    // top row spheres (plastics with varying roughness)
     pScene->addSphere({-1.75f, 3.f, 0.f}, 0.75f, matCT_GrayRoughPlastic);
     pScene->addSphere({0.f, 3.f, 0.f}, 0.75f, matCT_GrayMediumPlastic);
     pScene->addSphere({1.75f, 3.f, 0.f}, 0.75f, matCT_GraySmoothPlastic);
 
-    // Add triangle
+    // add triangle
     std::vector<Vertex> baseTriangle = {
         {{-0.75f, 1.5f, 0.f}},   // top
         {{-0.75f, 0.f, 0.f}},    // bottom-left (swapped)
         {{0.75f, 0.f, 0.f}},     // bottom-right (swapped)
     };
 
-    // Triangle
+    // triangle
     const unsigned int triId = pScene->addTriangle(baseTriangle, matLambert_White);
     if (Triangle* tri = pScene->getTriangle(triId)) {
         tri->translate({0.f, 4.5f, 0.f});
@@ -158,20 +160,20 @@ void createReferenceScene(SceneManager* pScene)
 
 void createBunnyScene(SceneManager* pScene)
 {
-    // Lambert materials for room
+    // lambert materials for room
     const unsigned char matLambert_GrayBlue = pScene->addMaterial(
         new Material_Lambert(glm::vec3(0.49f, 0.57f, 0.57f), 1.f));
     const unsigned char matLambert_White = pScene->addMaterial(
         new Material_Lambert(colors::white, 1.f));
 
-    // Room planes (same as reference scene)
+    // room planes (same as reference scene)
     pScene->addPlane({0.f, 0.f, 10.f}, {0.f, 0.f, -1.f}, matLambert_GrayBlue);   // BACK
     pScene->addPlane({0.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, matLambert_GrayBlue);     // BOTTOM
     pScene->addPlane({0.f, 10.f, 0.f}, {0.f, -1.f, 0.f}, matLambert_GrayBlue);   // TOP
     pScene->addPlane({5.f, 0.f, 0.f}, {-1.f, 0.f, 0.f}, matLambert_GrayBlue);    // RIGHT
     pScene->addPlane({-5.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, matLambert_GrayBlue);    // LEFT
 
-    // Load bunny mesh
+    // load bunny mesh
     std::vector<Vertex> bunnyVertices;
     std::vector<uint32_t> bunnyIndices;
 
@@ -179,7 +181,7 @@ void createBunnyScene(SceneManager* pScene)
         const unsigned int bunnyId = pScene->addMesh(bunnyVertices, bunnyIndices, matLambert_White);
 
         if (Mesh* pBunny = pScene->getMesh(bunnyId)) {
-            // Apply transformations
+            // apply transformations
             pBunny->rotateY(glm::radians(180.0f)); // PI radians = 180 degrees
             pBunny->scale(glm::vec3(2.f, 2.f, 2.f));
             pBunny->updateAABB();
@@ -199,7 +201,7 @@ void createBunnyScene(SceneManager* pScene)
         std::cerr << "Failed to load lowpoly_bunny.obj" << std::endl;
     }
 
-    // Lights (same as reference scene)
+    // lights (same as reference scene)
     pScene->addLight(new Light(
         glm::vec3(0.f, 5.f, 5.f),
         glm::vec3(0.f, 0.f, 0.f),
@@ -227,11 +229,11 @@ void createBunnyScene(SceneManager* pScene)
 
 void createSceneA(SceneManager* pScene)
 {
-    // Lambert materials for room
+    // lambert materials for room
     const unsigned char matLambert_GrayBlue = pScene->addMaterial(
         new Material_Lambert(glm::vec3(0.49f, 0.57f, 0.57f), 1.f));
 
-    // Room planes (same as reference scene)
+    // room planes (same as reference scene)
     pScene->addPlane({0.f, 0.f, 10.f}, {0.f, 0.f, -1.f}, matLambert_GrayBlue);   // BACK
     pScene->addPlane({0.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, matLambert_GrayBlue);     // BOTTOM
     pScene->addPlane({0.f, 10.f, 0.f}, {0.f, -1.f, 0.f}, matLambert_GrayBlue);   // TOP
@@ -263,14 +265,14 @@ void createSceneB(SceneManager* pScene)
     const unsigned char matLambert_GrayBlue = pScene->addMaterial(
         new Material_Lambert(glm::vec3(0.49f, 0.57f, 0.57f), 1.f));
 
-    // Room planes (same as reference scene)
+    // room planes (same as reference scene)
     pScene->addPlane({0.f, 0.f, 10.f}, {0.f, 0.f, -1.f}, matLambert_GrayBlue);   // BACK
     pScene->addPlane({0.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, matLambert_GrayBlue);     // BOTTOM
     pScene->addPlane({0.f, 10.f, 0.f}, {0.f, -1.f, 0.f}, matLambert_GrayBlue);   // TOP
     pScene->addPlane({5.f, 0.f, 0.f}, {-1.f, 0.f, 0.f}, matLambert_GrayBlue);    // RIGHT
     pScene->addPlane({-5.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, matLambert_GrayBlue);    // LEFT
 
-    // Load bunny mesh AS AN AREA LIGHT
+    // load bunny mesh AS AN AREA LIGHT
     std::vector<Vertex> bunnyVertices;
     std::vector<uint32_t> bunnyIndices;
 
@@ -306,6 +308,7 @@ void createSceneB(SceneManager* pScene)
         pScene->addMeshAreaLight(
             bunnyVertices,
             bunnyIndices,
+    {0.9f, 0.9f, 0.9f},
             emission,
             intensity
         );
@@ -320,18 +323,11 @@ void createSceneB(SceneManager* pScene)
 
 void createSceneC(SceneManager* pScene)
 {
-     // Lambert materials for room
+    // lambert materials for room
     const unsigned char matLambert_GrayBlue = pScene->addMaterial(
         new Material_Lambert(glm::vec3(0.49f, 0.57f, 0.57f), 1.f));
 
-    // Room planes (same as reference scene)
-    pScene->addPlane({0.f, 0.f, 10.f}, {0.f, 0.f, -1.f}, matLambert_GrayBlue);   // BACK
-    pScene->addPlane({0.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, matLambert_GrayBlue);     // BOTTOM
-    pScene->addPlane({0.f, 10.f, 0.f}, {0.f, -1.f, 0.f}, matLambert_GrayBlue);   // TOP
-    pScene->addPlane({5.f, 0.f, 0.f}, {-1.f, 0.f, 0.f}, matLambert_GrayBlue);    // RIGHT
-    pScene->addPlane({-5.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, matLambert_GrayBlue);    // LEFT
-
-    // Setup Cook-Torrence materials
+    // setup Cook-Torrence materials
     const unsigned char matCT_GrayRoughMetal = pScene->addMaterial(
         new Material_CookTorrence(glm::vec3(0.972f, 0.960f, 0.915f), 1.f, 1.f));
     const unsigned char matCT_GrayMediumMetal = pScene->addMaterial(
@@ -346,20 +342,29 @@ void createSceneC(SceneManager* pScene)
     const unsigned char matCT_GraySmoothPlastic = pScene->addMaterial(
         new Material_CookTorrence(glm::vec3(0.75f, 0.75f, 0.75f), 0.f, 0.1f));
 
+    // room planes (same as reference scene)
+    pScene->addPlane({0.f, 0.f, 10.f}, {0.f, 0.f, -1.f}, matLambert_GrayBlue);   // BACK
+    pScene->addPlane({0.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, matLambert_GrayBlue);     // BOTTOM
+    pScene->addPlane({0.f, 10.f, 0.f}, {0.f, -1.f, 0.f}, matLambert_GrayBlue);   // TOP
+    pScene->addPlane({5.f, 0.f, 0.f}, {-1.f, 0.f, 0.f}, matLambert_GrayBlue);    // RIGHT
+    pScene->addPlane({-5.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, matLambert_GrayBlue);    // LEFT
+
+
+
     const unsigned char matLambert_White = pScene->addMaterial(
         new Material_Lambert(colors::white, 1.f));
 
-    // Bottom row spheres (metals with varying roughness)
+    // bottom row spheres (metals with varying roughness)
     pScene->addSphere({-1.75f, 1.f, 5.f}, 0.75f, matCT_GrayRoughMetal);
     pScene->addSphere({0.f, 1.f, 5.f}, 0.75f, matCT_GrayMediumMetal);
     pScene->addSphere({1.75f, 1.f, 5.f}, 0.75f, matCT_GraySmoothMetal);
 
-    // Top row spheres (plastics with varying roughness)
+    // top row spheres (plastics with varying roughness)
     pScene->addSphere({-1.75f, 3.f, 5.f}, 0.75f, matCT_GrayRoughPlastic);
     pScene->addSphere({0.f, 3.f, 5.f}, 0.75f, matCT_GrayMediumPlastic);
     pScene->addSphere({1.75f, 3.f, 5.f}, 0.75f, matCT_GraySmoothPlastic);
 
-    // Load bunny mesh AS AN AREA LIGHT
+    // load bunny mesh AS AN AREA LIGHT
     std::vector<Vertex> bunnyVertices;
     std::vector<uint32_t> bunnyIndices;
 
@@ -367,8 +372,9 @@ void createSceneC(SceneManager* pScene)
 
         // apply transformations to vertices BEFORE adding as area light
         auto transform = glm::mat4(1.0f);
-        transform = glm::rotate(transform, glm::radians(180.0f), glm::vec3(0.f, 1.f, 0.f));
+        transform = glm::rotate(transform, glm::radians(180.0f), glm::vec3(0.f, 2.f, 0.f));
         transform = glm::scale(transform, glm::vec3(2.f, 2.f, 2.f));
+        transform = glm::translate(transform, glm::vec3(0.f, 0.0f, 0.f));
 
         // transform all vertices
         for (auto& vertex : bunnyVertices) {
@@ -395,6 +401,7 @@ void createSceneC(SceneManager* pScene)
         pScene->addMeshAreaLight(
             bunnyVertices,
             bunnyIndices,
+            {0.9f, 0.9f, 0.9f},
             emission,
             intensity
         );
@@ -424,21 +431,38 @@ void createSceneC(SceneManager* pScene)
     glm::vec3 trianglesEmission(1.0f, 0.0f, 0.0f);
     float trianglesIntensity = 20.0f;  // higher intensity for smaller area
 
-    pScene->addMeshAreaLight(ceilingLight_tri1, ceilingLight_indices1, trianglesEmission, trianglesIntensity);
-    pScene->addMeshAreaLight(ceilingLight_tri2, ceilingLight_indices2, trianglesEmission, trianglesIntensity);
+    pScene->addMeshAreaLight(ceilingLight_tri1, ceilingLight_indices1, {0.9f, 0.f, 0.f}, trianglesEmission, trianglesIntensity);
+    pScene->addMeshAreaLight(ceilingLight_tri2, ceilingLight_indices2, {0.9f, 0.f, 0.f}, trianglesEmission, trianglesIntensity);
 }
 
-int main(int argc, char* args[])
+int main(int argc, char* argv[])
 {
-    // Unreferenced parameters
-    (void)argc;
-    (void)args;
-
     constexpr uint32_t WIDTH = 640;
     constexpr uint32_t HEIGHT = 480;
 
-    // Initialize framework
-    auto pTimer = std::make_unique<Timer>();
+    // check for test mode argument
+    bool testMode = false;
+    std::string customFolder = "";
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--test-samples" || arg == "-t") {
+            testMode = true;
+        } else if (arg == "--output" || arg == "-o") {
+            if (i + 1 < argc) {
+                customFolder = argv[++i];
+            }
+        } else if (arg == "--help" || arg == "-h") {
+            std::cout << "Usage: " << argv[0] << " [options]" << std::endl;
+            std::cout << "Options:" << std::endl;
+            std::cout << "  -t, --test-samples    Run area light sampling test" << std::endl;
+            std::cout << "  -o, --output <folder> Specify output folder for test" << std::endl;
+            std::cout << "  -h, --help            Show this help message" << std::endl;
+            return 0;
+        }
+    }
+
+    // initialize renderer
     auto pRenderer = std::make_unique<Renderer>(WIDTH, HEIGHT);
 
     if (!pRenderer->initialize()) {
@@ -446,46 +470,60 @@ int main(int argc, char* args[])
         return -1;
     }
 
-    // Create scene
+    // create scene
     auto pScene = std::make_unique<SceneManager>();
-    auto pCamera = std::make_unique<Camera>(glm::vec3{0.f, 3.f, -9.f},
-                                            45.f,
-                                            static_cast<float>(WIDTH) / static_cast<float>(HEIGHT));
+    auto pCamera = std::make_unique<Camera>(
+        glm::vec3{0.f, 3.f, -9.f},
+        45.f,
+        static_cast<float>(WIDTH) / static_cast<float>(HEIGHT)
+    );
+
+    // use scene with area lights
     createSceneC(pScene.get());
     pScene->commit();
 
+    if (testMode) {
+        if (!customFolder.empty()) {
+            // use custom folder if specified
+            std::cout << "Using custom output folder: " << customFolder << std::endl;
+        }
 
-    // Start loop
+        std::cout << "\n=== Area Light Sampling Test ===" << std::endl;
+        std::cout << "Scene: Scene C (Mesh area light bunny + triangle area lights)" << std::endl;
+        std::cout << "Resolution: " << WIDTH << "x" << HEIGHT << std::endl;
+        std::cout << "Press ESC to interrupt the test at any time." << std::endl;
+        std::cout << "Press SPACE to pause/resume the test.\n" << std::endl;
+
+        pRenderer->setTestMode(true);
+    }
+
+    // timer for FPS display (only in non-test mode)
+    auto pTimer = std::make_unique<Timer>();
     pTimer->reset();
     pTimer->start();
 
-    // Uncomment to start benchmark
-    //pTimer->startBenchmark(10); // 1000 frames benchmark
-
     float printTimer = 0.f;
 
-    while (!pRenderer->shouldQuit())
-    {
-        //--------- Update ---------
+    // main loop
+    while (!pRenderer->shouldQuit()) {
+        // update scene
         pScene->update(pTimer.get());
 
-        //--------- Render ---------
+        // render
         pRenderer->render(*pCamera, *pScene);
         pRenderer->present();
 
-        //--------- Timer ---------
+        // update timer and show FPS (only in non-test mode)
         pTimer->update();
         printTimer += pTimer->getElapsed();
 
-        if (printTimer >= 1.f)
-        {
+        if (!testMode && printTimer >= 1.f) {
             printTimer = 0.f;
-            std::cout << "dFPS: " << pTimer->getdFPS() << std::endl;
+            std::cout << "FPS: " << pTimer->getdFPS() << std::endl;
         }
     }
 
     pTimer->stop();
-
     std::cout << "Application shutdown complete" << std::endl;
     return 0;
 }

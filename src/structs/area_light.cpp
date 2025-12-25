@@ -677,9 +677,10 @@ void MeshAreaLight::calculateNodeFlux(int nodeIndex) {
 }
 
 
-int MeshAreaLight::selectBVHNode(int nodeIndex, float u) const {
+int MeshAreaLight::selectBVHNode(int nodeIndex, float u, const glm::vec3& shadingPoint, float& outPdf) const {
     const BVHNode& node = m_bvhNodes[nodeIndex];
 
+    // Base case: Leaf node
     if (node.isLeaf) {
         return nodeIndex;
     }
@@ -687,21 +688,43 @@ int MeshAreaLight::selectBVHNode(int nodeIndex, float u) const {
     const BVHNode& left = m_bvhNodes[node.leftChild];
     const BVHNode& right = m_bvhNodes[node.rightChild];
 
-    // normalize probabilities
-    const float totalFlux = left.totalFlux + right.totalFlux;
-    if (totalFlux <= 0.0f) {
-        return -1;
+    // 1. Calculate Distance Squared to centroids
+    // Using a small epsilon (1e-4f) to prevent division by zero if shadingPoint is inside the node
+    float distSqLeft = glm::distance(shadingPoint, left.getCentroid());
+    distSqLeft = std::max(distSqLeft * distSqLeft, 1e-4f);
+
+    float distSqRight = glm::distance(shadingPoint, right.getCentroid());
+    distSqRight = std::max(distSqRight * distSqRight, 1e-4f);
+
+    // 2. Calculate Importance Weights (Flux / Distance^2)
+    // This estimates how much light reaches the shading point from this node
+    float weightLeft = left.totalFlux / distSqLeft;
+    float weightRight = right.totalFlux / distSqRight;
+    float totalWeight = weightLeft + weightRight;
+
+    if (totalWeight <= 0.0f) {
+        return -1; // Should not happen if flux > 0
     }
 
-    float leftProbability = left.totalFlux / totalFlux;
-    if (u < leftProbability) {
-        // Adjust u for the left subtree
-        float newU = (leftProbability > 0.0f) ? u / leftProbability : 0.0f;
-        return selectBVHNode(node.leftChild, newU);
+    // 3. Calculate Probability of going Left
+    float probLeft = weightLeft / totalWeight;
+
+    // 4. Traverse and Update PDF
+    if (u < probLeft) {
+        // Update the accumulated PDF for the path
+        outPdf *= probLeft;
+
+        // Rescale u for the next level
+        float newU = (probLeft > 0.0f) ? u / probLeft : 0.0f;
+        return selectBVHNode(node.leftChild, newU, shadingPoint, outPdf);
     } else {
-        // Adjust u for the right subtree
-        float newU = (1.0f - leftProbability > 0.0f) ? (u - leftProbability) / (1.0f - leftProbability) : 0.0f;
-        return selectBVHNode(node.rightChild, newU);
+        // Probability of going Right is (1.0 - probLeft)
+        float probRight = 1.0f - probLeft;
+        outPdf *= probRight;
+
+        // Rescale u
+        float newU = (probRight > 0.0f) ? (u - probLeft) / probRight : 0.0f;
+        return selectBVHNode(node.rightChild, newU, shadingPoint, outPdf);
     }
 }
 
@@ -813,8 +836,11 @@ AreaLightSample MeshAreaLight::sampleHierarchicalFlux(const glm::vec3 &shadingPo
         return sampleUniform(shadingPoint, u1, u2, u3); // fallback to uniform
     }
 
+
     // 1. select BVH node using flux based importance sampling
-    int selectedNodeIndex = selectBVHNode(m_rootNodeIndex, u1);
+    // initialize path probability
+    float pathPdf = 1.0f;
+    int selectedNodeIndex = selectBVHNode(m_rootNodeIndex, u1, shadingPoint, pathPdf);
     if (selectedNodeIndex == -1) {
         return AreaLightSample{};
     }
@@ -844,11 +870,11 @@ AreaLightSample MeshAreaLight::sampleHierarchicalFlux(const glm::vec3 &shadingPo
     // P(node) * P(triangle | node) * P(point | triangle)
 
     // probability of selecting this node = node.flux / root.flux
-    float rootFlux = m_bvhNodes[m_rootNodeIndex].totalFlux;
-    float nodeProbability = node.totalFlux / rootFlux;
+   //float rootFlux = m_bvhNodes[m_rootNodeIndex].totalFlux;
+   //float nodeProbability = node.totalFlux / rootFlux;
 
     float triangleProbability = 1.0f / static_cast<float>(numTrianglesInLeaf);
-    sample.pdf = sample.pdf * nodeProbability * triangleProbability;
+    sample.pdf = pathPdf * sample.pdf * triangleProbability;
 
     return sample;
 }

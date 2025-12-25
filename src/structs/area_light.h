@@ -319,7 +319,7 @@ private:
     void calculateNodeFlux(int nodeIndex);
 
     // Hierarchical sampling helper
-    [[nodiscard]] int selectBVHNode(int nodeIndex, float u) const;
+    [[nodiscard]] int selectBVHNode(int nodeIndex, float u, const glm::vec3& shadingPoint,  float& outPdf) const;
 
 
     // Check if point is inside triangle

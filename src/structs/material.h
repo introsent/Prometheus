@@ -173,6 +173,32 @@ private:
     float m_intensity;
 };
 
+struct Material_PhysicalEmitter : public Material {
+public:
+    glm::vec3 m_albedo;     // The color of the object itself (e.g., white glass)
+    glm::vec3 m_emission;   // The color of the light
+    float m_intensity;
+
+    Material_PhysicalEmitter(const glm::vec3& albedo, const glm::vec3& emission, float intensity)
+        : m_albedo(albedo), m_emission(emission), m_intensity(intensity) {}
+
+    // 1. REFLECTION: This object can still receive shadows and shading!
+    [[nodiscard]] glm::vec3 shade(const glm::vec3& hitPoint,
+                                  const glm::vec3& normal,
+                                  const glm::vec3& viewDir,
+                                  const glm::vec3& lightDir) const override {
+        // it behaves like a simple Lambertian surface for incoming light
+        return BRDF::Lambert(1.0f, m_albedo);
+    }
+
+    // 2. EMISSION: This is added ON TOP of the shading in the renderer
+    [[nodiscard]] glm::vec3 getEmission() const {
+        return m_emission * m_intensity;
+    }
+
+    [[nodiscard]] MaterialType getType() const override { return MaterialType::Emissive; }
+};
+
 namespace colors {
     constexpr glm::vec3 red{1.f, 0.f, 0.f};
     constexpr glm::vec3 blue{0.f, 0.f, 1.f};

@@ -127,7 +127,7 @@ unsigned int SceneManager::addTriangleAreaLight(const std::vector<Vertex>& verti
 }
 
 unsigned int SceneManager::addMeshAreaLight(const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices,
-    const glm::vec3& emission, float intensity, unsigned char materialId)
+     const glm::vec3& albedo, const glm::vec3& emission, float intensity, unsigned char materialId)
 {
     unsigned char emissiveMat = addMaterial(new Material_Emissive(emission, intensity));
     unsigned int meshIndex = addMesh(vertices, indices, emissiveMat);
