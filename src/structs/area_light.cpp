@@ -4,6 +4,8 @@
 
 #include "area_light.h"
 
+#include <iostream>
+
 #include "hit_result.h"
 #include "ray.h"
 #include "triangle.h"
@@ -356,7 +358,6 @@ void AreaImportanceTriangleSampler::recomputePositionUsingBarycentricCoordinates
     position = b0 * m_v0 + b1 * m_v1 + b2 * m_v2;
 }
 
-/// Triangle Area light implementation
 TriangleAreaLight::TriangleAreaLight(unsigned int triangleIndex,
                                      const glm::vec3& emission,
                                      float intensity,
@@ -380,7 +381,6 @@ void TriangleAreaLight::cacheGeometry() {
         return;
     }
 
-    // get vertices from triangle
     const auto& vertices = tri->getOriginalVertices();
     if (vertices.size() < 3) {
         m_v0 = m_v1 = m_v2 = glm::vec3(0.0f);
@@ -393,12 +393,9 @@ void TriangleAreaLight::cacheGeometry() {
     m_v1 = glm::vec3(vertices[1].position.x, vertices[1].position.y, vertices[1].position.z);
     m_v2 = glm::vec3(vertices[2].position.x, vertices[2].position.y, vertices[2].position.z);
 
-    // calculate normal
     const glm::vec3 edge1 = m_v1 - m_v0;
     const glm::vec3 edge2 = m_v2 - m_v0;
     m_normal = glm::normalize(glm::cross(edge1, edge2));
-
-    // calculate area: 0.5 * |cross(edge1, edge2)|
     m_area = 0.5f * glm::length(glm::cross(edge1, edge2));
 }
 
@@ -415,13 +412,8 @@ void TriangleAreaLight::initializeSampler() {
             break;
 
         case SamplingStrategy::HierarchicalFlux:
-            // TODO: Implement hierarchical flux sampler
-            m_sampler = std::make_unique<UniformTriangleSampler>(
-                m_v0, m_v1, m_v2, m_normal, m_area, m_emission, m_intensity);
-            break;
-
         case SamplingStrategy::VisibilityAwareHierarchical:
-            // TODO: Implement visibility aware sampler
+            // TODO: Implement other strategies
             m_sampler = std::make_unique<UniformTriangleSampler>(
                 m_v0, m_v1, m_v2, m_normal, m_area, m_emission, m_intensity);
             break;
@@ -446,13 +438,25 @@ float TriangleAreaLight::getPower() const {
     return m_sampler->getTotalFlux();
 }
 
+float TriangleAreaLight::calculateSolidAngle(const glm::vec3& p) const {
+    if (m_strategy == SamplingStrategy::AreaImportance) {
+        auto* importanceSampler = dynamic_cast<AreaImportanceTriangleSampler*>(m_sampler.get());
+        if (importanceSampler) {
+            return importanceSampler->calculateSolidAngle(p);
+        }
+    }
+    // For uniform sampling, we still need solid angle for mesh area importance
+    auto tempSampler = AreaImportanceTriangleSampler(
+        m_v0, m_v1, m_v2, m_normal, m_area, m_emission, m_intensity);
+    return tempSampler.calculateSolidAngle(p);
+}
+
 void TriangleAreaLight::setSamplingStrategy(SamplingStrategy strategy) {
     if (m_strategy != strategy) {
         m_strategy = strategy;
         initializeSampler();
     }
 }
-
 
 /// Mesh Area light implementation
 MeshAreaLight::MeshAreaLight(unsigned int meshIndex,
@@ -463,6 +467,7 @@ MeshAreaLight::MeshAreaLight(unsigned int meshIndex,
     , m_scene(scene)
     , m_emission(emission)
     , m_intensity(intensity)
+    , m_strategy(SamplingStrategy::AreaImportance)
     , m_totalArea(0.0f)
 {
     Mesh* mesh = scene->getMesh(meshIndex);
@@ -471,136 +476,263 @@ MeshAreaLight::MeshAreaLight(unsigned int meshIndex,
     const auto& vertices = mesh->getOriginalVertices();
     const auto& indices = mesh->getIndices();
 
-    // reserve space
     const size_t numTriangles = indices.size() / 3;
-    m_triangleSamplers.reserve(numTriangles);
-    m_triangleAreas.reserve(numTriangles);
-    m_triangleCDF.reserve(numTriangles);
+    m_triangles.reserve(numTriangles);
+    m_areaCDF.reserve(numTriangles);
 
-    // create triangle samplers and store areas
     for (size_t i = 0; i < indices.size(); i += 3) {
         const uint32_t idx0 = indices[i];
         const uint32_t idx1 = indices[i + 1];
         const uint32_t idx2 = indices[i + 2];
 
-        const glm::vec3 v0(vertices[idx0].position.x,
-                          vertices[idx0].position.y,
-                          vertices[idx0].position.z);
-        const glm::vec3 v1(vertices[idx1].position.x,
-                          vertices[idx1].position.y,
-                          vertices[idx1].position.z);
-        const glm::vec3 v2(vertices[idx2].position.x,
-                          vertices[idx2].position.y,
-                          vertices[idx2].position.z);
+        const glm::vec3 v0(vertices[idx0].position.x, vertices[idx0].position.y, vertices[idx0].position.z);
+        const glm::vec3 v1(vertices[idx1].position.x, vertices[idx1].position.y, vertices[idx1].position.z);
+        const glm::vec3 v2(vertices[idx2].position.x, vertices[idx2].position.y, vertices[idx2].position.z);
 
         const glm::vec3 edge1 = v1 - v0;
         const glm::vec3 edge2 = v2 - v0;
         const glm::vec3 crossProd = glm::cross(edge1, edge2);
         const float area = 0.5f * glm::length(crossProd);
 
-        // skip degenerate triangles BEFORE adding
         if (area <= 1e-8f) continue;
 
         const glm::vec3 normal = glm::normalize(crossProd);
 
-        auto sampler = std::make_unique<AreaImportanceTriangleSampler>(
-            v0, v1, v2, normal, area, emission, intensity
-        );
-
+        m_triangles.emplace_back(v0, v1, v2, normal, area, emission, intensity);
         m_totalArea += area;
-        m_triangleAreas.push_back(area);
-        m_triangleSamplers.push_back(std::move(sampler));
     }
 
-    // build area-weighted CDF
-    if (!m_triangleSamplers.empty() && m_totalArea > 0.0f) {
+    // Build area CDF for uniform sampling
+    if (!m_triangles.empty() && m_totalArea > 0.0f) {
         float cumulativeArea = 0.0f;
-        for (size_t i = 0; i < m_triangleSamplers.size(); ++i) {
-            cumulativeArea += m_triangleAreas[i];
-            m_triangleCDF.push_back(cumulativeArea / m_totalArea); // Normalize during construction
+        for (const auto& tri : m_triangles) {
+            cumulativeArea += tri.area;
+            m_areaCDF.push_back(cumulativeArea / m_totalArea);
         }
-
-        // ensure last value is exactly 1.0 (handle floating point errors)
-        m_triangleCDF.back() = 1.0f;
+        m_areaCDF.back() = 1.0f; // Ensure exact 1.0
     }
 }
 
-AreaLightSample MeshAreaLight::sample(const glm::vec3& shadingPoint,
-                                     float u1, float u2, float u3) const {
-    if (m_triangleSamplers.empty()) {
-        return AreaLightSample{
-            glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f),
-            0.0f, glm::vec3(0.0f), 0.0f
-        };
+bool MeshAreaLight::isPointInTriangle(const glm::vec3& p,
+                                     const glm::vec3& v0,
+                                     const glm::vec3& v1,
+                                     const glm::vec3& v2,
+                                     float& u, float& v, float& w) const {
+    // Compute vectors
+    glm::vec3 v0v1 = v1 - v0;
+    glm::vec3 v0v2 = v2 - v0;
+    glm::vec3 v0p = p - v0;
+
+    // Compute dot products
+    float d00 = glm::dot(v0v1, v0v1);
+    float d01 = glm::dot(v0v1, v0v2);
+    float d11 = glm::dot(v0v2, v0v2);
+    float d20 = glm::dot(v0p, v0v1);
+    float d21 = glm::dot(v0p, v0v2);
+
+    float denom = d00 * d11 - d01 * d01;
+    if (std::abs(denom) < 1e-8f) return false;
+
+    // Compute barycentric coordinates
+    v = (d11 * d20 - d01 * d21) / denom;
+    w = (d00 * d21 - d01 * d20) / denom;
+    u = 1.0f - v - w;
+
+    // Check if point is in triangle
+    constexpr float eps = 1e-4f;
+    return (u >= -eps) && (v >= -eps) && (w >= -eps);
+}
+
+AreaLightSample MeshAreaLight::sampleUniform(const glm::vec3& shadingPoint,
+                                             float u1, float u2, float u3) const {
+    if (m_triangles.empty()) {
+        return AreaLightSample{};
     }
 
-    // IMPORTANCE SAMPLING: Build per-shading-point CDF based on solid angles
-    std::vector<float> solidAngles;
-    solidAngles.reserve(m_triangleSamplers.size());
+    // 1. Select triangle by area
+    const auto it = std::lower_bound(m_areaCDF.begin(), m_areaCDF.end(), u1);
+    size_t triIndex = std::distance(m_areaCDF.begin(), it);
+    triIndex = std::min(triIndex, m_triangles.size() - 1);
 
-    float totalSolidAngle = 0.0f;
-    for (const auto& sampler : m_triangleSamplers) {
-        // cast to access calculateSolidAngle
-        const auto* importanceSampler = dynamic_cast<const AreaImportanceTriangleSampler*>(sampler.get());
-        if (importanceSampler) {
-            float omega = importanceSampler->calculateSolidAngle(shadingPoint);
-            solidAngles.push_back(omega);
-            totalSolidAngle += omega;
-        } else {
-            // Fallback for other sampler types (shouldn't happen with current setup)
-            solidAngles.push_back(m_triangleAreas[solidAngles.size()]);
-            totalSolidAngle += m_triangleAreas[solidAngles.size() - 1];
-        }
-    }
+    // 2. Sample uniformly on selected triangle
+    const TriangleData& tri = m_triangles[triIndex];
+    AreaLightSample sample = tri.uniformSampler->sample(shadingPoint, u2, u3);
 
-    if (totalSolidAngle <= 0.0f) {
-        return AreaLightSample{
-            glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f),
-            0.0f, glm::vec3(0.0f), 0.0f
-        };
-    }
-
-    // select triangle using solid-angle-based CDF
-    size_t triIndex = 0;
-    float cumulativeSolidAngle = 0.0f;
-    for (size_t i = 0; i < solidAngles.size(); ++i) {
-        cumulativeSolidAngle += solidAngles[i];
-        if (u1 * totalSolidAngle <= cumulativeSolidAngle) {
-            triIndex = i;
-            break;
-        }
-    }
-
-    // safety clamp
-    triIndex = std::min(triIndex, m_triangleSamplers.size() - 1);
-
-    // sample the selected triangle
-    AreaLightSample sample = m_triangleSamplers[triIndex]->sample(shadingPoint, u2, u3);
-
-    // update PDF to account for triangle selection probability
-    // probability of selecting this triangle = solidAngle[i] / totalSolidAngle
-    const float triSelectionProb = solidAngles[triIndex] / totalSolidAngle;
-    sample.pdf *= triSelectionProb;
-
-    // update area to reflect total mesh area
+    // 3. Adjust PDF for triangle selection
+    float selectionProb = tri.area / m_totalArea;
+    sample.pdf *= selectionProb;
     sample.area = m_totalArea;
 
     return sample;
 }
 
+AreaLightSample MeshAreaLight::sampleAreaImportance(const glm::vec3& shadingPoint,
+                                                   float u1, float u2, float u3) const {
+    if (m_triangles.empty()) {
+        return AreaLightSample{};
+    }
+
+    // 1. Compute solid angles for all triangles
+    std::vector<float> solidAngles(m_triangles.size());
+    float totalSolidAngle = 0.0f;
+
+    for (size_t i = 0; i < m_triangles.size(); ++i) {
+        solidAngles[i] = m_triangles[i].areaImportanceSampler->calculateSolidAngle(shadingPoint);
+        if (solidAngles[i] > 0.0f) {
+            totalSolidAngle += solidAngles[i];
+        }
+    }
+
+    if (totalSolidAngle <= 0.0f) {
+        // Fall back to uniform sampling if no triangle is visible
+        return sampleUniform(shadingPoint, u1, u2, u3);
+    }
+
+    // 2. Build solid angle CDF
+    std::vector<float> solidAngleCDF(m_triangles.size());
+    float cumulative = 0.0f;
+    for (size_t i = 0; i < m_triangles.size(); ++i) {
+        cumulative += solidAngles[i] / totalSolidAngle;
+        solidAngleCDF[i] = cumulative;
+    }
+    solidAngleCDF.back() = 1.0f;
+
+    // 3. Select triangle by solid angle
+    const auto it = std::lower_bound(solidAngleCDF.begin(), solidAngleCDF.end(), u1);
+    size_t triIndex = std::distance(solidAngleCDF.begin(), it);
+    triIndex = std::min(triIndex, m_triangles.size() - 1);
+
+    // 4. Sample using area importance on selected triangle
+    const TriangleData& tri = m_triangles[triIndex];
+    AreaLightSample sample = tri.areaImportanceSampler->sample(shadingPoint, u2, u3);
+
+    // 5. Adjust PDF for triangle selection
+    float selectionProb = solidAngles[triIndex] / totalSolidAngle;
+    sample.pdf *= selectionProb;
+    sample.area = m_totalArea;
+
+    return sample;
+}
+
+AreaLightSample MeshAreaLight::sample(const glm::vec3& shadingPoint,
+                                     float u1, float u2, float u3) const {
+    switch (m_strategy) {
+        case SamplingStrategy::AreaImportance:
+            return sampleAreaImportance(shadingPoint, u1, u2, u3);
+        case SamplingStrategy::Uniform:
+        default:
+            return sampleUniform(shadingPoint, u1, u2, u3);
+    }
+}
+
+float MeshAreaLight::pdfUniform(const glm::vec3& shadingPoint,
+                               const glm::vec3& lightPoint) const {
+    // Find which triangle contains the point
+    for (size_t i = 0; i < m_triangles.size(); ++i) {
+        const TriangleData& tri = m_triangles[i];
+
+        float u, v, w;
+        if (isPointInTriangle(lightPoint, tri.v0, tri.v1, tri.v2, u, v, w)) {
+            // Point is on this triangle
+            float trianglePdf = tri.uniformSampler->pdf(shadingPoint, lightPoint);
+            float selectionProb = tri.area / m_totalArea;
+            return trianglePdf * selectionProb;
+        }
+    }
+
+    // Point not on any triangle
+    return 0.0f;
+}
+
+float MeshAreaLight::pdfAreaImportance(const glm::vec3& shadingPoint,
+                                      const glm::vec3& lightPoint) const {
+    // 1. Compute solid angles for all triangles
+    std::vector<float> solidAngles(m_triangles.size());
+    float totalSolidAngle = 0.0f;
+
+    for (size_t i = 0; i < m_triangles.size(); ++i) {
+        solidAngles[i] = m_triangles[i].areaImportanceSampler->calculateSolidAngle(shadingPoint);
+        if (solidAngles[i] > 0.0f) {
+            totalSolidAngle += solidAngles[i];
+        }
+    }
+
+    if (totalSolidAngle <= 0.0f) {
+        return pdfUniform(shadingPoint, lightPoint);
+    }
+
+    // 2. Find which triangle contains the point
+    for (size_t i = 0; i < m_triangles.size(); ++i) {
+        const TriangleData& tri = m_triangles[i];
+
+        float u, v, w;
+        if (isPointInTriangle(lightPoint, tri.v0, tri.v1, tri.v2, u, v, w)) {
+            // Point is on this triangle
+            float trianglePdf = tri.areaImportanceSampler->pdf(shadingPoint, lightPoint);
+            float selectionProb = solidAngles[i] / totalSolidAngle;
+            return trianglePdf * selectionProb;
+        }
+    }
+
+    // Point not on any triangle
+    return 0.0f;
+}
+
+float MeshAreaLight::pdf(const glm::vec3& shadingPoint,
+                        const glm::vec3& lightPoint) const {
+    switch (m_strategy) {
+        case SamplingStrategy::AreaImportance:
+            return pdfAreaImportance(shadingPoint, lightPoint);
+        case SamplingStrategy::Uniform:
+        default:
+            return pdfUniform(shadingPoint, lightPoint);
+    }
+}
+
 float MeshAreaLight::getTotalPower() const {
-    // calculate from samplers, not from empty m_triangleLights!
     float power = 0.0f;
-    for (const auto& sampler : m_triangleSamplers) {
-        power += sampler->getTotalFlux();
+    for (const auto& tri : m_triangles) {
+        power += tri.uniformSampler->getTotalFlux();
     }
     return power;
 }
 
-void MeshAreaLight::setSamplingStrategy(SamplingStrategy strategy) const
-{
-    // For now, this only works if you're using m_triangleLights
-    for (auto& triLight : m_triangleLights) {
-        triLight->setSamplingStrategy(strategy);
+void MeshAreaLight::setSamplingStrategy(SamplingStrategy strategy) {
+    m_strategy = strategy;
+}
+
+
+
+
+BVHNode::BVHNode() : leftChild(-1), rightChild(-1), startTri(0), endTri(0), totalFlux(0.0f), totalArea(0.0f), isLeaf(false) {
+}
+
+BVHNode::BVHNode(int left, int right, float flux, float area, bool leaf) {
+    isLeaf = leaf;
+    if (isLeaf) {
+        initializeLeafNode(left, right, flux, area);
+    } else {
+        initializeInternalNode(left, right, flux, area);
     }
 }
+
+void BVHNode::initializeInternalNode(int left, int right, float flux, float a) {
+    leftChild = left;
+    rightChild = right;
+    startTri = 0;
+    endTri = 0;
+    totalFlux = flux;
+    totalArea = a;
+}
+
+void BVHNode::initializeLeafNode(int start, int end, float flux, float a) {
+    leftChild = -1;
+    rightChild = -1;
+    startTri = start;
+    endTri = end;
+    totalFlux = flux;
+    totalArea = a;
+}
+
+
+

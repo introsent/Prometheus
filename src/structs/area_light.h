@@ -190,6 +190,10 @@ public:
 
     // Power calculation (emission * area * intensity)
     [[nodiscard]] float getPower() const;
+
+    // For mesh sampling
+    [[nodiscard]] float calculateSolidAngle(const glm::vec3& p) const;
+
 private:
     void initializeSampler();
     void cacheGeometry();
@@ -217,29 +221,106 @@ public:
                  const glm::vec3& emission,
                  float intensity,
                  SceneManager* scene);
+    ~MeshAreaLight() = default;
 
+    // sampling methods with explicit strategy
+    [[nodiscard]] AreaLightSample sampleUniform(const glm::vec3& shadingPoint,
+                          float u1, float u2, float u3) const;
+
+    [[nodiscard]] AreaLightSample sampleAreaImportance(const glm::vec3& shadingPoint,
+                          float u1, float u2, float u3) const;
+
+    // convenience method that uses current strategy
     [[nodiscard]] AreaLightSample sample(const glm::vec3& shadingPoint,
                           float u1, float u2, float u3) const;
 
+    // PDF methods
+    [[nodiscard]] float pdfUniform(const glm::vec3& shadingPoint,
+                     const glm::vec3& lightPoint) const;
+
+    [[nodiscard]] float pdfAreaImportance(const glm::vec3& shadingPoint,
+                         const glm::vec3& lightPoint) const;
+
+    [[nodiscard]] float pdf(const glm::vec3& shadingPoint,
+             const glm::vec3& lightPoint) const;
+
     [[nodiscard]] float getTotalPower() const;
 
-    [[nodiscard]] const std::vector<std::unique_ptr<TriangleAreaLight>>& getTriangleLights() const {
-        return m_triangleLights;
-    }
+    void setSamplingStrategy(SamplingStrategy strategy);
+    [[nodiscard]] SamplingStrategy getSamplingStrategy() const { return m_strategy; }
 
-    void setSamplingStrategy(SamplingStrategy strategy) const;
 private:
+    struct TriangleData {
+        glm::vec3 v0, v1, v2;
+        glm::vec3 normal;
+        float area;
+        std::unique_ptr<UniformTriangleSampler> uniformSampler;
+        std::unique_ptr<AreaImportanceTriangleSampler> areaImportanceSampler;
+
+        TriangleData(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2,
+                    const glm::vec3& normal, float area,
+                    const glm::vec3& emission, float intensity)
+            : v0(v0), v1(v1), v2(v2), normal(normal), area(area)
+        {
+            uniformSampler = std::make_unique<UniformTriangleSampler>(
+                v0, v1, v2, normal, area, emission, intensity);
+            areaImportanceSampler = std::make_unique<AreaImportanceTriangleSampler>(
+                v0, v1, v2, normal, area, emission, intensity);
+        }
+    };
+
+    // Check if point is inside triangle
+    [[nodiscard]] bool isPointInTriangle(const glm::vec3& p,
+                                        const glm::vec3& v0,
+                                        const glm::vec3& v1,
+                                        const glm::vec3& v2,
+                                        float& u, float& v, float& w) const;
+
     unsigned int m_meshIndex;
     SceneManager* m_scene;
-
     glm::vec3 m_emission;
     float m_intensity;
+    SamplingStrategy m_strategy;
 
-    std::vector<std::unique_ptr<TriangleAreaLight>> m_triangleLights;
-    std::vector<std::unique_ptr<AreaLightSampler>> m_triangleSamplers;
-    std::vector<float> m_triangleAreas;
-    std::vector<float> m_triangleCDF;  // For importance sampling triangles
+    std::vector<TriangleData> m_triangles;
+    std::vector<float> m_areaCDF;      // For uniform sampling
     float m_totalArea;
+};
+
+
+struct BVHNode {
+    BVHNode();
+
+    // for nodes
+    BVHNode(int left, int right, float flux, float area, bool leaf);
+
+    void initializeInternalNode(int left, int right, float flux, float a);
+
+    void initializeLeafNode(int start, int end, float flux, float a);
+
+    // for internal nodes
+    int leftChild{};
+    int rightChild{};
+
+    // for leaf nodes
+    int startTri{};
+    int endTri{};
+
+    // for bounding box
+    glm::vec3 bboxMin{};
+    glm::vec3 bboxMax{};
+
+    // total flux in current BVH node
+    float totalFlux{};
+
+    // total area in this node
+    float totalArea{};
+
+    // whether this node is a leaf or no
+    bool isLeaf;
+
+    // centroid (for sorting)
+    [[nodiscard]] glm::vec3 getCentroid() const { return (bboxMin + bboxMax) * 0.5f; }
 };
 
 
