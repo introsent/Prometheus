@@ -80,28 +80,7 @@ private:
     float m_intensity;
 };
 
-// tiny helpers
-
-static float safeAcos(float x) { return std::acos(std::clamp(x, -1.0f, 1.0f)); }
-static float safeSqrt(float x) { return std::sqrt(std::max(0.0f, x)); }
-
-// Gram-Schmidt: return (v - proj_a(v)) normalized; if near zero, return any perpendicular to a
-static glm::vec3 gramSchmidtNormalize(const glm::vec3 &v, const glm::vec3 &a) {
-    const glm::vec3 proj = a * glm::dot(v, a);
-    glm::vec3 w = v - proj;
-    if (float len2 = glm::dot(w, w); len2 <= 1e-10f) {
-        // fallback: find any vector perpendicular to a
-        const glm::vec3 absA = glm::abs(a);
-        const glm::vec3 other = (absA.x <= absA.y && absA.x <= absA.z) ? glm::vec3(1,0,0)
-                         : (absA.y <= absA.x && absA.y <= absA.z) ? glm::vec3(0,1,0)
-                                                                 : glm::vec3(0,0,1);
-        w = glm::cross(a, other);
-        len2 = glm::dot(w, w);
-        if (len2 <= 1e-10f) return glm::normalize(glm::cross(a, glm::vec3(1,0,0) + 0.0001f)); // last resort
-    }
-    return glm::normalize(w);
-}
-
+/// S2: Area importance sampler using solid angle
 class AreaImportanceTriangleSampler : public AreaLightSampler {
 public:
     AreaImportanceTriangleSampler(const glm::vec3& v0,
@@ -214,6 +193,45 @@ private:
     std::unique_ptr<AreaLightSampler> m_sampler;
 };
 
+struct BVHNode {
+    BVHNode();
+
+    // for nodes
+    BVHNode(int left, int right, float flux, float area, bool leaf);
+
+    void initializeInternalNode(int left, int right, float flux, float a);
+
+    void initializeLeafNode(int start, int end, float flux, float a);
+
+    // for internal nodes
+    int leftChild{ -1 };
+    int rightChild{ -1 };
+
+    // for leaf nodes
+    int startTri{ 0 };
+    int endTri{ 0 };
+
+    // for bounding box
+    glm::vec3 bboxMin{0.f};
+    glm::vec3 bboxMax{ 0.f};
+
+    // total flux in current BVH node
+    float totalFlux{ 0.f };
+
+    // total area in this node
+    float totalArea{ 0.f };
+
+    // whether this node is a leaf or no
+    bool isLeaf;
+
+    // store actual triangle indices for leaf nodes
+    std::vector<int> triangleIndices;
+
+    // centroid (for sorting)
+    [[nodiscard]] glm::vec3 getCentroid() const { return (bboxMin + bboxMax) * 0.5f; }
+};
+
+
 /// Mesh area light (for now collection of triangles)
 class MeshAreaLight {
 public:
@@ -230,6 +248,9 @@ public:
     [[nodiscard]] AreaLightSample sampleAreaImportance(const glm::vec3& shadingPoint,
                           float u1, float u2, float u3) const;
 
+    [[nodiscard]] AreaLightSample sampleHierarchicalFlux(const glm::vec3& shadingPoint,
+                                                      float u1, float u2, float u3) const;
+
     // convenience method that uses current strategy
     [[nodiscard]] AreaLightSample sample(const glm::vec3& shadingPoint,
                           float u1, float u2, float u3) const;
@@ -241,6 +262,9 @@ public:
     [[nodiscard]] float pdfAreaImportance(const glm::vec3& shadingPoint,
                          const glm::vec3& lightPoint) const;
 
+    [[nodiscard]] float pdfHierarchicalFlux(const glm::vec3& shadingPoint,
+                                      const glm::vec3& lightPoint) const;
+
     [[nodiscard]] float pdf(const glm::vec3& shadingPoint,
              const glm::vec3& lightPoint) const;
 
@@ -248,6 +272,10 @@ public:
 
     void setSamplingStrategy(SamplingStrategy strategy);
     [[nodiscard]] SamplingStrategy getSamplingStrategy() const { return m_strategy; }
+
+    // Build and manage BVH
+    void buildBVH();
+    void printBVHStats() const;
 
 private:
     struct TriangleData {
@@ -269,6 +297,31 @@ private:
         }
     };
 
+    // BVH data
+    std::vector<BVHNode> m_bvhNodes;
+    int m_rootNodeIndex;
+
+    // Triangle info for BVH construction
+    struct TriangleInfo {
+        glm::vec3 centroid;
+        glm::vec3 bboxMin, bboxMax;
+        float flux;
+        float area;
+        int originalIndex;  // Index in m_triangles
+
+        TriangleInfo(const glm::vec3& cent, const glm::vec3& min, const glm::vec3& max,
+                     float f, float a, int idx)
+            : centroid(cent), bboxMin(min), bboxMax(max), flux(f), area(a), originalIndex(idx) {}
+    };
+
+    // BVH building helper functions
+    int buildBVHNode(std::vector<TriangleInfo>& triInfos, int start, int end, int depth = 0);
+    void calculateNodeFlux(int nodeIndex);
+
+    // Hierarchical sampling helper
+    [[nodiscard]] int selectBVHNode(int nodeIndex, float u) const;
+
+
     // Check if point is inside triangle
     [[nodiscard]] bool isPointInTriangle(const glm::vec3& p,
                                         const glm::vec3& v0,
@@ -288,40 +341,6 @@ private:
 };
 
 
-struct BVHNode {
-    BVHNode();
-
-    // for nodes
-    BVHNode(int left, int right, float flux, float area, bool leaf);
-
-    void initializeInternalNode(int left, int right, float flux, float a);
-
-    void initializeLeafNode(int start, int end, float flux, float a);
-
-    // for internal nodes
-    int leftChild{};
-    int rightChild{};
-
-    // for leaf nodes
-    int startTri{};
-    int endTri{};
-
-    // for bounding box
-    glm::vec3 bboxMin{};
-    glm::vec3 bboxMax{};
-
-    // total flux in current BVH node
-    float totalFlux{};
-
-    // total area in this node
-    float totalArea{};
-
-    // whether this node is a leaf or no
-    bool isLeaf;
-
-    // centroid (for sorting)
-    [[nodiscard]] glm::vec3 getCentroid() const { return (bboxMin + bboxMax) * 0.5f; }
-};
 
 
 #endif //PROMETHEUS_AREA_LIGHT_H

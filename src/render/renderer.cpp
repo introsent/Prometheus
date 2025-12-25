@@ -72,7 +72,7 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
     const auto& lights = scene.getLights();
 
     // area light settings
-    constexpr int AREA_LIGHT_SAMPLES = 4; // number of samples per area light
+    constexpr int AREA_LIGHT_SAMPLES = 15000; // number of samples per area light
 
     // use larger tiles for better cache coherency
     constexpr uint32_t tileSize = 64; // 8x8 tiles

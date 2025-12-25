@@ -144,6 +144,7 @@ add_executable(Prometheus
         src/parser/obj_parser.h
         src/structs/area_light.cpp
         src/structs/area_light.h
+        src/math_helpers.h
 )
 
 # Copy resources to output folder
