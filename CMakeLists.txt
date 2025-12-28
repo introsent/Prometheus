@@ -147,6 +147,8 @@ add_executable(Prometheus
         src/math_helpers.h
         src/structs/visibility_aware_mis.cpp
         src/structs/visibility_aware_mis.h
+        src/area_lights/core/sampler_base.h
+        src/area_lights/core/math_helpers.h
 )
 
 # Copy resources to output folder
