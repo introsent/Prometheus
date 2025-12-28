@@ -152,6 +152,11 @@ add_executable(Prometheus
         src/area_lights/samplers/uniform_triangle_sampler.h
         src/area_lights/samplers/area_importance_triangle_sampler.cpp
         src/area_lights/samplers/area_importance_triangle_sampler.h
+        src/area_lights/acceleration/bvh_builder.cpp
+        src/area_lights/acceleration/bvh_builder.h
+        src/area_lights/acceleration/bvh_node.h
+        src/area_lights/acceleration/bvh_config.h
+        src/area_lights/acceleration/triangle_build_info.h
 )
 
 # Copy resources to output folder
