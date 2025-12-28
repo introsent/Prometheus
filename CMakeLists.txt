@@ -142,10 +142,6 @@ add_executable(Prometheus
         src/geometries/mesh.cpp
         src/geometries/mesh.h
         src/parser/obj_parser.h
-        src/structs/area_light.cpp
-        src/structs/area_light.h
-        src/structs/visibility_aware_mis.cpp
-        src/structs/visibility_aware_mis.h
         src/area_lights/core/sampler_base.h
         src/area_lights/core/math_helpers.h
         src/area_lights/samplers/uniform_triangle_sampler.cpp
@@ -163,6 +159,14 @@ add_executable(Prometheus
         src/area_lights/visibility/spatial_visibility_cache.h
         src/area_lights/mis/mis_weights.h
         src/area_lights/mis/bsdf_sampler.h
+        src/area_lights/lights/triangle_area_light.cpp
+        src/area_lights/lights/triangle_area_light.h
+        src/area_lights/lights/mesh_area_light.cpp
+        src/area_lights/lights/mesh_area_light.h
+        src/area_lights/samplers/visibility_aware_sampler.h
+        src/area_lights/samplers/visibility_aware_sampler.cpp
+        src/area_lights/samplers/hierarchical_light_sampler.cpp
+        src/area_lights/samplers/hierarchical_light_sampler.h
 )
 
 # Copy resources to output folder

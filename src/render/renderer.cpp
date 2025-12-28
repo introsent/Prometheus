@@ -3,7 +3,6 @@
 //
 
 #include "renderer.h"
-#include "area_light.h"
 #include <algorithm>
 #include <iostream>
 #include <fstream>
@@ -13,8 +12,11 @@
 #include <random>
 #include <chrono>
 #include <filesystem>
-
-#include "visibility_aware_mis.h"
+#include "sampler_base.h"
+#include "lights/mesh_area_light.h"
+#include "lights/triangle_area_light.h"
+#include "mis/bsdf_sampler.h"
+#include "samplers/visibility_aware_sampler.h"
 
 #if defined(PARALLEL_EXECUTION)
 #include <execution>
@@ -34,7 +36,7 @@ private:
 Renderer::Renderer(const int width, const int height)
     : m_width(width), m_height(height), m_window(nullptr),
       m_renderer(nullptr), m_texture(nullptr), m_quit(false),
-        m_testMode(false),m_currentSamples(1), m_maxSamples(256) {
+      m_testMode(false), m_currentSamples(1), m_maxSamples(256), m_currentStrategy() {
     m_pixels.resize(width * height);
 
     m_sampleCounts = {1, 2, 4, 8, 16, 32, 64, 128, 256};
@@ -147,7 +149,7 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
     const auto& lights = scene.getLights();
 
     // determine number of samples to use
-    int areaLightSamples = m_testMode ? m_currentSamples : 128;
+    int areaLightSamples = m_testMode ? m_currentSamples : 16;
 
     // display current sample count
     if (m_testMode) {
@@ -267,6 +269,7 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
 
                             glm::vec3 areaLightContrib(0.0f);
 
+                            // ONLY do light sampling (BRDF sampling disabled until we fix geometry ID check)
                             for (int s = 0; s < areaLightSamples; ++s) {
                                 const float u1 = rng.get();
                                 const float u2 = rng.get();
@@ -290,9 +293,9 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
                                 const Ray shadowRay{hit.origin, lightDir, 0.0001f, dist - 0.0001f};
                                 bool wasVisible = !tracer.isOccluded(shadowRay);
 
-                                if (meshLight->m_visAwareSampler) {
+                                if (meshLight->getVisibilitySampler()) {
                                     int sampledNode = meshLight->getLastSampledNode();
-                                    meshLight->m_visAwareSampler->recordVisibilitySample(
+                                    meshLight->getVisibilitySampler()->recordVisibilitySample(
                                         hit.origin, sampledNode, wasVisible
                                     );
                                 }
@@ -302,12 +305,9 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
                                 const glm::vec3 brdf = mat->shade(hit.origin, hit.normal, viewDir, lightDir);
                                 const float geometricTerm = cosTheta_light / distSq;
 
-                                // calculate contribution with MIS weight
+                                // NO MIS weight multiplication - just set it back to simple version
                                 glm::vec3 contribution =
                                     lightSample.radiance * brdf * cosTheta * geometricTerm / lightSample.pdf;
-
-                                // apply MIS weight
-                                contribution *= lightSample.misWeight;
 
                                 areaLightContrib += contribution;
                             }

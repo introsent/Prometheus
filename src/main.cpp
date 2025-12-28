@@ -12,6 +12,7 @@
 #include "render/timer.h"
 #include "render/scene_manager.h"
 #include "camera/camera.h"
+#include "lights/mesh_area_light.h"
 #include "parser/obj_parser.h"
 #include "render/renderer.h"
 #include "structs/material.h"
@@ -594,7 +595,7 @@ void createSceneD_FluxStressTest(SceneManager* pScene)
 
 
 void createSimpleTest(SceneManager* pScene) {
-    // Just 3 triangles with DIFFERENT fluxes
+    // just 3 triangles with DIFFERENT fluxes
     std::vector<Vertex> verts = {
         {{-1, 9, 4}, {0,-1,0}},
         {{ 1, 9, 4}, {0,-1,0}},
@@ -616,7 +617,7 @@ void createSimpleTest(SceneManager* pScene) {
     );
 
     MeshAreaLight* light = pScene->getMeshAreaLight(lightIndex);
-    // Make triangle 0 BRIGHT, triangle 1 dim
+    // make triangle 0 BRIGHT, triangle 1 dim
     light->setTriangleIntensity(0, 1000.0f);
     light->setTriangleIntensity(1, 0.1f);
 

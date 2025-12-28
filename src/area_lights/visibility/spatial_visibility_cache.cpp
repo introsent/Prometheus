@@ -7,20 +7,17 @@
 #include <iostream>
 #include <glm/glm.hpp>
 
-SpatialVisibilityCache::SpatialVisibilityCache(
-    const glm::vec3& sceneMin,
-    const glm::vec3& sceneMax,
-    int resolution)
+SpatialVisibilityCache::SpatialVisibilityCache(const glm::vec3& sceneMin,
+                                               const glm::vec3& sceneMax,
+                                               int resolution)
     : m_sceneMin(sceneMin)
-    , m_sceneMax(sceneMax) {
+    , m_sceneMax(sceneMax)
+{
+    glm::vec3 sceneExtent = sceneMax - sceneMin;
 
-    const glm::vec3 sceneExtent = sceneMax - sceneMin;
+    float maxExtent = std::max({sceneExtent.x, sceneExtent.y, sceneExtent.z});
+    float cellSizeTarget = maxExtent / static_cast<float>(resolution);
 
-    // compute cell size based on target resolution
-    const float maxExtent = std::max({sceneExtent.x, sceneExtent.y, sceneExtent.z});
-    const float cellSizeTarget = maxExtent / static_cast<float>(resolution);
-
-    // compute actual resolution for each axis
     m_resolution.x = std::max(1, static_cast<int>(sceneExtent.x / cellSizeTarget));
     m_resolution.y = std::max(1, static_cast<int>(sceneExtent.y / cellSizeTarget));
     m_resolution.z = std::max(1, static_cast<int>(sceneExtent.z / cellSizeTarget));
@@ -28,28 +25,29 @@ SpatialVisibilityCache::SpatialVisibilityCache(
     m_cellSize = sceneExtent / glm::vec3(m_resolution);
 
     // allocate cells
-    const int totalCells = m_resolution.x * m_resolution.y * m_resolution.z;
-    m_cells.reserve(totalCells);
+    int totalCells = m_resolution.x * m_resolution.y * m_resolution.z;
+    m_cells.resize(totalCells);
 
-    // initialize cell centers and radii
+    // Initialize each cell with proper center and radius
     for (int z = 0; z < m_resolution.z; ++z) {
         for (int y = 0; y < m_resolution.y; ++y) {
             for (int x = 0; x < m_resolution.x; ++x) {
-                const glm::vec3 cellMin = m_sceneMin + glm::vec3(x, y, z) * m_cellSize;
-                const glm::vec3 cellMax = cellMin + m_cellSize;
+                int index = x + y * m_resolution.x + z * m_resolution.x * m_resolution.y;
 
-                VisibilityCacheCell cell;
-                cell.center = (cellMin + cellMax) * 0.5f;
-                cell.radius = glm::length(m_cellSize) * 0.5f;
+                glm::ivec3 coord(x, y, z);
+                glm::vec3 cellMin = m_sceneMin + glm::vec3(coord) * m_cellSize;
+                glm::vec3 cellMax = cellMin + m_cellSize;
 
-                m_cells.push_back(std::move(cell));
+                // initialize the cell in place
+                m_cells[index].center = (cellMin + cellMax) * 0.5f;
+                m_cells[index].radius = glm::length(m_cellSize) * 0.5f;
             }
         }
     }
 
     std::cout << "Visibility cache initialized: "
               << m_resolution.x << "x" << m_resolution.y << "x" << m_resolution.z
-              << " = " << totalCells << " cells\n";
+              << " = " << totalCells << " cells" << std::endl;
 }
 
 glm::ivec3 SpatialVisibilityCache::pointToCellCoord(const glm::vec3& point) const {

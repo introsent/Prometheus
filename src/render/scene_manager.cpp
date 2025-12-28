@@ -8,6 +8,8 @@
 #include "sphere.h"
 #include "triangle.h"
 #include "mesh.h"
+#include "lights/mesh_area_light.h"
+#include "lights/triangle_area_light.h"
 
 SceneManager::SceneManager() {
     m_devicePtr = std::make_unique<EmbreeDevice>();

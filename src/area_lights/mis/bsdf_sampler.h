@@ -33,7 +33,7 @@ public:
         BSDFSample sample{};
 
         // cosine-weighted hemisphere sampling
-        // maps uniform [0,1]² to directions with density proportional to cos(θ)
+        // maps uniform [0,1]^2 to directions with density proportional to cos(θ)
         const glm::vec3 localDir = cosineSampleHemisphere(u1, u2);
 
         // transform to world space aligned with surface normal
@@ -51,7 +51,7 @@ public:
 
     // evaluate pdf for diffuse BRDF
     static float pdfDiffuse(const glm::vec3& normal, const glm::vec3& direction) {
-        const float cosTheta = std::max(0.0f, glm::dot(direction, normal));
+        float cosTheta = std::max(0.0f, glm::dot(direction, normal));
         return cosTheta / glm::pi<float>();
     }
 
@@ -59,15 +59,10 @@ private:
     // cosine-weighted hemisphere sampling
     // returns direction in local space (z+ is up)
     static glm::vec3 cosineSampleHemisphere(float u1, float u2) {
-        // concentric disk mapping followed by projection
-        const float r = std::sqrt(u1);
+        float z = std::sqrt(u1);
+        const float r = std::sqrt(std::max(0.0f, 1.0f - z * z));
         const float phi = 2.0f * glm::pi<float>() * u2;
-
-        return {
-            r * std::cos(phi),
-            r * std::sin(phi),
-            std::sqrt(std::max(0.0f, 1.0f - u1))
-        };
+        return {r * std::cos(phi), r * std::sin(phi), z};
     }
 
     // align local direction with surface normal

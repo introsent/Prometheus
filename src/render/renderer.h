@@ -5,12 +5,14 @@
 #ifndef RENDERER_H
 #define RENDERER_H
 
+#include <string>
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <vector>
 #include "camera.h"
 #include "scene_manager.h"
 #include "ray_tracer.h"
+#include "sampler_base.h"
 
 
 class Renderer {
@@ -32,8 +34,6 @@ public:
     void setAreaLightStrategy(SceneManager& scene, SamplingStrategy strategy);
 
 private:
-    static SDL_Color toSDLColor(const glm::vec3& color);
-
     int m_width;
     int m_height;
     SDL_Window* m_window;

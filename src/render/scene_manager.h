@@ -8,13 +8,13 @@
 #include <unordered_map>
 #include <vector>
 
-#include "area_light.h"
 #include "embree_scene.h"
 #include "light.h"
 #include "material.h"
 #include "timer.h"
 #include "triangle.h"
 #include "mesh.h"
+#include "sampler_base.h"
 #include "vertex.h"
 #include "embree4/rtcore_device.h"
 
