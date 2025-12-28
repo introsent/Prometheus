@@ -144,11 +144,14 @@ add_executable(Prometheus
         src/parser/obj_parser.h
         src/structs/area_light.cpp
         src/structs/area_light.h
-        src/math_helpers.h
         src/structs/visibility_aware_mis.cpp
         src/structs/visibility_aware_mis.h
         src/area_lights/core/sampler_base.h
         src/area_lights/core/math_helpers.h
+        src/area_lights/samplers/uniform_triangle_sampler.cpp
+        src/area_lights/samplers/uniform_triangle_sampler.h
+        src/area_lights/samplers/area_importance_triangle_sampler.cpp
+        src/area_lights/samplers/area_importance_triangle_sampler.h
 )
 
 # Copy resources to output folder
@@ -217,6 +220,8 @@ target_include_directories(Prometheus PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/init
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ray
         ${CMAKE_CURRENT_SOURCE_DIR}/src/structs
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/area_lights
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/area_lights/core
         ${CMAKE_CURRENT_SOURCE_DIR}/external
 )
 
