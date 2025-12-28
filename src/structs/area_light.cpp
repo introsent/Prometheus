@@ -54,8 +54,12 @@ AreaLightSample UniformTriangleSampler::sample(const glm::vec3& shadingPoint,
     };
 }
 
-float UniformTriangleSampler::pdf(const glm::vec3& shadingPoint,
-                                  const glm::vec3& lightPoint) const {
+void UniformTriangleSampler::setIntensity(float i) {
+    m_intensity = i;
+}
+
+float UniformTriangleSampler::pdf(const glm::vec3&,
+                                  const glm::vec3&) const {
     // uniform sampling: constant PDF = 1/Area
     return 1.0f / m_area;
 }
@@ -145,6 +149,10 @@ float AreaImportanceTriangleSampler::pdf(const glm::vec3& shadingPoint,
     float pdfSolidAngle = 1.0f / solidAngle;
     // transform to area pdf: pdf_area = pdf_solid * (cos_theta_light / r^2)
     return pdfSolidAngle * (cos_theta_light / (r * r));
+}
+
+void AreaImportanceTriangleSampler::setIntensity(float i) {
+    m_intensity = i;
 }
 
 float AreaImportanceTriangleSampler::getTotalFlux() const {
@@ -328,9 +336,9 @@ std::pair<float, glm::vec3> AreaImportanceTriangleSampler::getRayPlaneIntersecti
 
 void AreaImportanceTriangleSampler::recomputePositionUsingBarycentricCoordinates(float t, glm::vec3 &position) const {
     // compute barycentric coordinates of position
-    glm::vec3 v0v1 = m_v1 - m_v0;
-    glm::vec3 v0v2 = m_v2 - m_v0;
-    glm::vec3 v0p = position - m_v0;
+    const glm::vec3 v0v1 = m_v1 - m_v0;
+    const glm::vec3 v0v2 = m_v2 - m_v0;
+    const glm::vec3 v0p = position - m_v0;
 
     float d00 = glm::dot(v0v1, v0v1);
     float d01 = glm::dot(v0v1, v0v2);
@@ -467,7 +475,7 @@ MeshAreaLight::MeshAreaLight(unsigned int meshIndex,
     , m_scene(scene)
     , m_emission(emission)
     , m_intensity(intensity)
-    , m_strategy(SamplingStrategy::HierarchicalFlux)
+    , m_strategy(SamplingStrategy::Uniform)
     , m_totalArea(0.0f),
     m_rootNodeIndex(-1)
 {
@@ -499,7 +507,21 @@ MeshAreaLight::MeshAreaLight(unsigned int meshIndex,
 
         const glm::vec3 normal = glm::normalize(crossProd);
 
-        m_triangles.emplace_back(v0, v1, v2, normal, area, emission, intensity);
+        TriangleData tri;
+        tri.v0 = v0;
+        tri.v1 = v1;
+        tri.v2 = v2;
+        tri.normal = normal;
+        tri.area = area;
+        tri.intensity = intensity;
+
+        tri.uniformSampler = std::make_unique<UniformTriangleSampler>(
+            v0, v1, v2, normal, area, emission, intensity);
+
+        tri.areaImportanceSampler = std::make_unique<AreaImportanceTriangleSampler>(
+            v0, v1, v2, normal, area, emission, intensity);
+
+        m_triangles.push_back(std::move(tri));
         m_totalArea += area;
     }
 
@@ -520,8 +542,27 @@ MeshAreaLight::MeshAreaLight(unsigned int meshIndex,
     printBVHStats();
 }
 
+void MeshAreaLight::setTriangleIntensity(size_t triangleIndex, float intensity)
+{
+    if (triangleIndex >= m_triangles.size())
+        return;
+
+    TriangleData& tri = m_triangles[triangleIndex];
+    tri.intensity = intensity;
+
+    // Update samplers
+    tri.uniformSampler->setIntensity(intensity);
+    tri.areaImportanceSampler->setIntensity(intensity);
+}
+
 void MeshAreaLight::buildBVH() {
+    m_bvhNodes.clear();
+    m_rootNodeIndex = -1;
+    m_triangleToLeafNode.clear();
+
     if (m_triangles.empty()) return;
+
+    std::cout << "Building BVH for " << m_triangles.size() << " triangles" << std::endl;
 
     // prepare triangles info for BVH construction
     std::vector<TriangleInfo> triangleInfos;
@@ -539,7 +580,11 @@ void MeshAreaLight::buildBVH() {
         glm::vec3 centroid = MathHelpers::computeTriangleCentroid(triangle.v0, triangle.v1, triangle.v2);
 
         // compute flux
-        float flux = MathHelpers::computeTriangleFlux(m_emission, m_intensity, triangle.area);
+        float flux = MathHelpers::computeTriangleFlux(
+            m_emission,
+            triangle.intensity,
+            triangle.area
+        );
 
         triangleInfos.emplace_back(centroid, bboxMin, bboxMax, flux, triangle.area, i);
     }
@@ -547,6 +592,8 @@ void MeshAreaLight::buildBVH() {
     m_rootNodeIndex = buildBVHNode(triangleInfos, 0, static_cast<int>(triangleInfos.size()));
 
     calculateNodeFlux(m_rootNodeIndex);
+
+    buildTriangleToNodeMapping();
 }
 
 // Print BVH values to check tree correctness
@@ -678,6 +725,11 @@ void MeshAreaLight::calculateNodeFlux(int nodeIndex) {
 
 
 int MeshAreaLight::selectBVHNode(int nodeIndex, float u, const glm::vec3& shadingPoint, float& outPdf) const {
+    if (nodeIndex < 0 || nodeIndex >= m_bvhNodes.size()) {
+        std::cerr << "ERROR: Invalid node index: " << nodeIndex << std::endl;
+        return -1;
+    }
+
     const BVHNode& node = m_bvhNodes[nodeIndex];
 
     // Base case: Leaf node
@@ -758,6 +810,118 @@ bool MeshAreaLight::isPointInTriangle(const glm::vec3& p,
     return (u >= -eps) && (v >= -eps) && (w >= -eps);
 }
 
+float MeshAreaLight::computeHierarchicalPdfForTriangle(size_t triangleIndex,
+                                                       const glm::vec3& shadingPoint, const glm::vec3& lightPoint) const {
+    if (triangleIndex >= m_triangleToLeafNode.size()) {
+        return 0.0f;
+    }
+
+    int leafNodeIndex = m_triangleToLeafNode[triangleIndex];
+    if (leafNodeIndex < 0 || leafNodeIndex >= static_cast<int>(m_bvhNodes.size())) {
+        return 0.0f;
+    }
+
+    // traverse from root to leaf, accumulating probabilities
+    float accumulatedPdf = 1.0f;
+    int currentNode = m_rootNodeIndex;
+
+    while (currentNode != leafNodeIndex) {
+        const BVHNode& node = m_bvhNodes[currentNode];
+
+        if (node.isLeaf) {
+            std::cerr << "ERROR: Reached leaf before target!" << std::endl;
+            return 0.0f;
+        }
+
+        const BVHNode& left = m_bvhNodes[node.leftChild];
+        const BVHNode& right = m_bvhNodes[node.rightChild];
+
+        // Compute distance-weighted probabilities (MUST match selectBVHNode)
+        float distLeft = glm::distance(shadingPoint, left.getCentroid());
+        float distSqLeft = std::max(distLeft * distLeft, 1e-4f);
+
+        float distRight = glm::distance(shadingPoint, right.getCentroid());
+        float distSqRight = std::max(distRight * distRight, 1e-4f);
+
+        float weightLeft = left.totalFlux / distSqLeft;
+        float weightRight = right.totalFlux / distSqRight;
+        float totalWeight = weightLeft + weightRight;
+
+        if (totalWeight <= 0.0f) {
+            return 0.0f;
+        }
+
+        // Determine which child leads to our target leaf
+        std::function<bool(int, int)> isInSubtree = [&](int nodeToFind, int subtreeRoot) -> bool {
+            if (subtreeRoot == nodeToFind) return true;
+            if (m_bvhNodes[subtreeRoot].isLeaf) return false;
+
+            return isInSubtree(nodeToFind, m_bvhNodes[subtreeRoot].leftChild) ||
+                   isInSubtree(nodeToFind, m_bvhNodes[subtreeRoot].rightChild);
+        };
+
+        bool goLeft = isInSubtree(leafNodeIndex, node.leftChild);
+
+        // Accumulate probability for chosen path
+        if (goLeft) {
+            float probLeft = weightLeft / totalWeight;
+            accumulatedPdf *= probLeft;
+            currentNode = node.leftChild;
+        } else {
+            float probRight = weightRight / totalWeight;
+            accumulatedPdf *= probRight;
+            currentNode = node.rightChild;
+        }
+    }
+
+    // Now at leaf node - get triangle selection probability
+    const BVHNode& leaf = m_bvhNodes[leafNodeIndex];
+    int numTrianglesInLeaf = static_cast<int>(leaf.triangleIndices.size());
+
+    if (numTrianglesInLeaf <= 0) {
+        return 0.0f;
+    }
+
+    // if leaf.totalFlux > 0, triangle probability = triangleFlux / leaf.totalFlux
+    float triangleFlux = MathHelpers::computeTriangleFlux(m_emission, m_intensity, m_triangles[triangleIndex].area);
+    float triProb = 0.0f;
+    if (leaf.totalFlux > 0.0f) {
+        triProb = triangleFlux / leaf.totalFlux;
+    } else {
+        // fallback to uniform if leaf has zero flux
+        triProb = 1.0f / static_cast<float>(numTrianglesInLeaf);
+    }
+
+    // trianglePdf (point pdf on triangle)
+    float trianglePdf = m_triangles[triangleIndex].uniformSampler->pdf(shadingPoint, lightPoint);
+
+    return accumulatedPdf * triProb * trianglePdf;
+}
+
+
+void MeshAreaLight::buildTriangleToNodeMapping() {
+    m_triangleToLeafNode.resize(m_triangles.size(), -1);
+
+    // traverse BVH and map triangles to leaf nodes
+    std::function<void(int)> traverse = [&](int nodeIndex) {
+        const BVHNode& node = m_bvhNodes[nodeIndex];
+
+        if (node.isLeaf) {
+            // Map all triangles in this leaf to this node
+            for (int triIdx : node.triangleIndices) {
+                m_triangleToLeafNode[triIdx] = nodeIndex;
+            }
+        } else {
+            traverse(node.leftChild);
+            traverse(node.rightChild);
+        }
+    };
+
+    if (m_rootNodeIndex >= 0) {
+        traverse(m_rootNodeIndex);
+    }
+}
+
 AreaLightSample MeshAreaLight::sampleUniform(const glm::vec3& shadingPoint,
                                              float u1, float u2, float u3) const {
     if (m_triangles.empty()) {
@@ -829,52 +993,88 @@ AreaLightSample MeshAreaLight::sampleAreaImportance(const glm::vec3& shadingPoin
     return sample;
 }
 
-AreaLightSample MeshAreaLight::sampleHierarchicalFlux(const glm::vec3 &shadingPoint, float u1, float u2, float u3) const
+AreaLightSample MeshAreaLight::sampleHierarchicalFlux(const glm::vec3 &shadingPoint,
+                                                       float u1, float u2, float u3) const
 {
-    if (m_bvhNodes.empty() || m_rootNodeIndex == -1)
-    {
-        return sampleUniform(shadingPoint, u1, u2, u3); // fallback to uniform
+    if (m_bvhNodes.empty() || m_rootNodeIndex == -1) {
+        return sampleUniform(shadingPoint, u1, u2, u3);
     }
 
-
-    // 1. select BVH node using flux based importance sampling
-    // initialize path probability
+    // 1. Select leaf node using hierarchical flux distribution
     float pathPdf = 1.0f;
-    int selectedNodeIndex = selectBVHNode(m_rootNodeIndex, u1, shadingPoint, pathPdf);
-    if (selectedNodeIndex == -1) {
+    int leafNodeIndex = selectBVHNode(m_rootNodeIndex, u1, shadingPoint, pathPdf);
+
+    if (leafNodeIndex == -1) {
         return AreaLightSample{};
     }
 
-    const BVHNode& node = m_bvhNodes[selectedNodeIndex];
-    if (!node.isLeaf) {
-        return sampleUniform(shadingPoint, u1, u2, u3); // fallback to uniform
+    const BVHNode& leaf = m_bvhNodes[leafNodeIndex];
+    if (!leaf.isLeaf || leaf.triangleIndices.empty()) {
+        return AreaLightSample{};
     }
 
-    // 2. within the leaf node, select a triangle
-    int numTrianglesInLeaf = node.endTri - node.startTri;
+    // 2. Within leaf, select triangle BY FLUX (not uniformly!)
+    float fluxSum = 0.0f;
+    std::vector<float> triangleFluxes;
+    std::vector<int> triangleIndicesInLeaf; // Store original triangle indices
 
-    float triangleSelectU = u2;
-    int triangleIndexInLeaf = static_cast<int>(triangleSelectU * static_cast<float>(numTrianglesInLeaf));
-    triangleIndexInLeaf = std::min(triangleIndexInLeaf, numTrianglesInLeaf - 1);
+    for (int triIdx : leaf.triangleIndices) {
+        const TriangleData& tri = m_triangles[triIdx];
+        // Use the triangle's actual flux (emission * intensity * area)
+        float flux = tri.intensity * tri.area *
+                    ((m_emission.r + m_emission.g + m_emission.b) / 3.0f);
+        triangleFluxes.push_back(flux);
+        triangleIndicesInLeaf.push_back(triIdx);
+        fluxSum += flux;
+    }
 
-    int actualTriangleIndex = node.startTri + triangleIndexInLeaf;
-    const TriangleData& triangle = m_triangles[actualTriangleIndex];
+    if (fluxSum <= 0.0f) {
+        return AreaLightSample{};
+    }
 
-    // 3. sample the selected triangle (uniform sampling for simplicity)
-    AreaLightSample sample = triangle.uniformSampler->sample(shadingPoint, u3, std::fmod(u1 + u2, 1.0f));
+    // Select triangle proportional to its flux
+    float target = u2 * fluxSum;
+    float cumulative = 0.0f;
+    int selectedIdxInLeaf = 0;
+    int selectedTriIdx = triangleIndicesInLeaf[0];
+
+    for (size_t i = 0; i < triangleIndicesInLeaf.size(); ++i) {
+        cumulative += triangleFluxes[i];
+        if (target <= cumulative) {
+            selectedIdxInLeaf = i;
+            selectedTriIdx = triangleIndicesInLeaf[i];
+            break;
+        }
+    }
+
+    const TriangleData& triangle = m_triangles[selectedTriIdx];
+
+    // Use area importance sampling on the selected triangle
+    AreaLightSample sample = triangle.areaImportanceSampler->sample(shadingPoint, u3,
+                                                                    std::fmod(u1 + u2, 1.0f));
+
     if (sample.pdf <= 0.0f) {
         return AreaLightSample{};
     }
 
-    // 4: compute PDF
-    // P(node) * P(triangle | node) * P(point | triangle)
+    // 3. Calculate combined PDF:
+    // P_total = P_node_selection * P_triangle_in_node * P_point_on_triangle
 
-    // probability of selecting this node = node.flux / root.flux
-   //float rootFlux = m_bvhNodes[m_rootNodeIndex].totalFlux;
-   //float nodeProbability = node.totalFlux / rootFlux;
+    // Triangle selection probability = flux_i / sum(flux_in_leaf)
+    float triangleSelectionProb = triangleFluxes[selectedIdxInLeaf] / fluxSum;
 
-    float triangleProbability = 1.0f / static_cast<float>(numTrianglesInLeaf);
-    sample.pdf = pathPdf * sample.pdf * triangleProbability;
+    // Update PDF
+    sample.pdf = pathPdf * triangleSelectionProb * sample.pdf;
+
+    // Debug output
+    static int debugCounter = 0;
+    if (debugCounter++ < 10) {
+        std::cout << "Hierarchical FLUX: Leaf " << leafNodeIndex
+                  << " (" << leaf.triangleIndices.size() << " tris)"
+                  << " -> Triangle " << selectedTriIdx
+                  << " (flux=" << triangleFluxes[selectedIdxInLeaf] << ")"
+                  << " total leaf flux=" << fluxSum << std::endl;
+    }
 
     return sample;
 }
@@ -946,55 +1146,29 @@ float MeshAreaLight::pdfAreaImportance(const glm::vec3& shadingPoint,
     return 0.0f;
 }
 
-float MeshAreaLight::pdfHierarchicalFlux(const glm::vec3 &shadingPoint, const glm::vec3 &lightPoint) const {
-    if (m_bvhNodes.empty()) {
+float MeshAreaLight::pdfHierarchicalFlux(const glm::vec3& shadingPoint,
+                                         const glm::vec3& lightPoint) const {
+    if (m_bvhNodes.empty() || m_rootNodeIndex == -1) {
         return pdfUniform(shadingPoint, lightPoint);
     }
 
-    // find which triangle contains the point
+    // 1. Find which triangle contains the point
+    size_t triangleIndex = m_triangles.size();
     for (size_t i = 0; i < m_triangles.size(); ++i) {
         const TriangleData& triangle = m_triangles[i];
-
         float u, v, w;
         if (isPointInTriangle(lightPoint, triangle.v0, triangle.v1, triangle.v2, u, v, w)) {
-            // found the triangle
-            // now need to find which leaf node contains this triangle
-
-            // simple linear search through leaf nodes
-            // (potentially can be optimized by storing triangle-to-node mapping)
-            for (const auto& node : m_bvhNodes) {
-                if (!node.isLeaf) continue;
-
-                // check if triangle i is in this leaf
-                bool found = false;
-                for (int j = node.startTri; j < node.endTri; ++j) {
-                    if (static_cast<size_t>(j) == i) {
-                        found = true;
-                        break;
-                    }
-                }
-
-                if (found) {
-                    // compute PDF
-                    const float rootFlux = m_bvhNodes[m_rootNodeIndex].totalFlux;
-                    const float nodeProbability = node.totalFlux / rootFlux;
-
-                    const int numTrianglesInLeaf = node.endTri - node.startTri;
-                    const float triProbability = 1.0f / static_cast<float>(numTrianglesInLeaf);
-
-                    const float trianglePdf = triangle.uniformSampler->pdf(shadingPoint, lightPoint);
-
-                    return trianglePdf * nodeProbability * triProbability;
-                }
-            }
-
-            // triangle found but not in BVH, fallback to uniform
-            return pdfUniform(shadingPoint, lightPoint);
+            triangleIndex = i;
+            break;
         }
     }
 
-    // point not on any triangle
-    return 0.0f;
+    if (triangleIndex >= m_triangles.size()) {
+        return 0.0f;
+    }
+
+    // 2. Compute hierarchical PDF for this triangle
+    return computeHierarchicalPdfForTriangle(triangleIndex, shadingPoint, lightPoint);
 }
 
 float MeshAreaLight::pdf(const glm::vec3& shadingPoint,

@@ -77,6 +77,8 @@ public:
         return m_meshAreaLights;
     }
 
+    [[nodiscard]] MeshAreaLight* getMeshAreaLight(unsigned int index) const;
+
 
 private:
     std::unique_ptr<EmbreeDevice> m_devicePtr;

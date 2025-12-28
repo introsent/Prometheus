@@ -32,15 +32,10 @@ private:
 Renderer::Renderer(const int width, const int height)
     : m_width(width), m_height(height), m_window(nullptr),
       m_renderer(nullptr), m_texture(nullptr), m_quit(false),
-      m_testMode(false), m_currentSamples(1), m_maxSamples(16384) {
+        m_testMode(false),m_currentSamples(1), m_maxSamples(256) {
     m_pixels.resize(width * height);
 
-    // Generate all sample counts (powers of two from 1 to 16384)
-    int samples = 1;
-    while (samples <= m_maxSamples) {
-        m_sampleCounts.push_back(samples);
-        samples <<= 1;  // Multiply by 2
-    }
+    m_sampleCounts = {1, 2, 4, 8, 16, 32, 64, 128, 256};
 }
 
 Renderer::~Renderer() {
@@ -72,8 +67,8 @@ bool Renderer::isTestComplete() const {
 }
 
 void Renderer::saveScreenshot(const std::string& filename) const {
-    // prepend folder path to filename
-    const std::string filepath = m_testFolder + "/" + filename;
+    std::string fullFilename = m_strategyName + "_" + filename;
+    const std::string filepath = m_testFolder + "/" + fullFilename;
 
     // create an SDL_Surface from our pixel data
     SDL_Surface* surface = SDL_CreateSurface(m_width, m_height, SDL_PIXELFORMAT_ARGB8888);
@@ -150,7 +145,7 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
     const auto& lights = scene.getLights();
 
     // determine number of samples to use
-    int areaLightSamples = m_testMode ? m_currentSamples : 1028;
+    int areaLightSamples = m_testMode ? m_currentSamples : 8;
 
     // display current sample count
     if (m_testMode) {
@@ -158,7 +153,6 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
     }
 
     // tile-based rendering for parallelization
-    constexpr uint32_t tileSize = 64;
     const uint32_t tilesX = (m_width + 7) / 8;
     const uint32_t tilesY = (m_height + 7) / 8;
     const uint32_t totalTiles = tilesX * tilesY;
@@ -396,6 +390,43 @@ bool Renderer::shouldQuit() {
         }
     }
     return m_quit || (m_testMode && isTestComplete());
+}
+
+void Renderer::setAreaLightStrategy(SceneManager& scene, SamplingStrategy strategy) {
+    m_currentStrategy = strategy;
+
+    // set strategy name for display
+    switch (strategy) {
+        case SamplingStrategy::Uniform:
+            m_strategyName = "Uniform";
+            break;
+        case SamplingStrategy::AreaImportance:
+            m_strategyName = "AreaImportance";
+            break;
+        case SamplingStrategy::HierarchicalFlux:
+            m_strategyName = "HierarchicalFlux";
+            break;
+        case SamplingStrategy::VisibilityAwareHierarchical:
+            m_strategyName = "VisibilityAware";
+            break;
+    }
+
+    std::cout << "Setting all area lights to: " << m_strategyName << std::endl;
+
+    auto& lights = scene.getLights();
+    int count = 0;
+
+    for (auto& light : lights) {
+        if (light->type == LightType::MeshArea && light->meshAreaLight) {
+            light->meshAreaLight->setSamplingStrategy(strategy);
+            count++;
+        } else if (light->type == LightType::TriangleArea && light->triangleAreaLight) {
+            light->triangleAreaLight->setSamplingStrategy(strategy);
+            count++;
+        }
+    }
+
+    std::cout << "  Applied to " << count << " area lights" << std::endl;
 }
 
 void Renderer::createTestFolder() {

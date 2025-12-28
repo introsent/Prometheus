@@ -48,6 +48,8 @@ public:
     [[nodiscard]] virtual float pdf(const glm::vec3& shadingPoint,
                     const glm::vec3& lightPoint) const = 0;
 
+    virtual void setIntensity(float i) = 0;
+
     // get total flux (for importance sampling)
     [[nodiscard]] virtual float getTotalFlux() const = 0;
 };
@@ -67,8 +69,10 @@ public:
     [[nodiscard]] AreaLightSample sample(const glm::vec3& shadingPoint,
                           float u1, float u2) const override;
 
+    void setIntensity(float i) override;
+
     [[nodiscard]] float pdf(const glm::vec3& shadingPoint,
-             const glm::vec3& lightPoint) const override;
+                            const glm::vec3& lightPoint) const override;
 
     [[nodiscard]] float getTotalFlux() const override;
 
@@ -97,6 +101,8 @@ public:
 
     [[nodiscard]] float pdf(const glm::vec3& shadingPoint,
              const glm::vec3& lightPoint) const override;
+
+    void setIntensity(float i) override;
 
     [[nodiscard]] float getTotalFlux() const override;
     [[nodiscard]] float calculateSolidAngle(const glm::vec3& p) const;
@@ -277,19 +283,26 @@ public:
     void buildBVH();
     void printBVHStats() const;
 
+    void setTriangleIntensity(size_t triangleIndex, float intensity);
+
+    void updateBVH() {
+        buildBVH();
+    }
+
 private:
     struct TriangleData {
         glm::vec3 v0, v1, v2;
         glm::vec3 normal;
+        float intensity;
         float area;
         std::unique_ptr<UniformTriangleSampler> uniformSampler;
         std::unique_ptr<AreaImportanceTriangleSampler> areaImportanceSampler;
 
+        TriangleData() = default;
         TriangleData(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2,
                     const glm::vec3& normal, float area,
                     const glm::vec3& emission, float intensity)
-            : v0(v0), v1(v1), v2(v2), normal(normal), area(area)
-        {
+            : v0(v0), v1(v1), v2(v2), normal(normal), intensity(0), area(area) {
             uniformSampler = std::make_unique<UniformTriangleSampler>(
                 v0, v1, v2, normal, area, emission, intensity);
             areaImportanceSampler = std::make_unique<AreaImportanceTriangleSampler>(
@@ -328,6 +341,14 @@ private:
                                         const glm::vec3& v1,
                                         const glm::vec3& v2,
                                         float& u, float& v, float& w) const;
+
+    std::vector<int> m_triangleToLeafNode;  // maps triangle index -> leaf node index
+
+    [[nodiscard]] float computeHierarchicalPdfForTriangle(size_t triangleIndex,
+                                           const glm::vec3& shadingPoint, const glm::vec3& lightPoint) const;
+
+
+    void buildTriangleToNodeMapping();
 
     unsigned int m_meshIndex;
     SceneManager* m_scene;

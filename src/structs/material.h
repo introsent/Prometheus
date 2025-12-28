@@ -156,10 +156,10 @@ public:
     Material_Emissive(const glm::vec3& emission, float intensity)
         : m_emission(emission), m_intensity(intensity) {}
 
-    [[nodiscard]] glm::vec3 shade(const glm::vec3& origin,
-                   const glm::vec3& normal,
-                   const glm::vec3& viewDir,
-                   const glm::vec3& lightDir) const override {
+    [[nodiscard]] glm::vec3 shade(const glm::vec3&,
+                   const glm::vec3&,
+                   const glm::vec3&,
+                   const glm::vec3&) const override {
         // emissive materials don't reflect light, they emit
         return glm::vec3(0.0f);
     }
@@ -183,10 +183,10 @@ public:
         : m_albedo(albedo), m_emission(emission), m_intensity(intensity) {}
 
     // 1. REFLECTION: This object can still receive shadows and shading!
-    [[nodiscard]] glm::vec3 shade(const glm::vec3& hitPoint,
-                                  const glm::vec3& normal,
-                                  const glm::vec3& viewDir,
-                                  const glm::vec3& lightDir) const override {
+    [[nodiscard]] glm::vec3 shade(const glm::vec3&,
+                                  const glm::vec3&,
+                                  const glm::vec3&,
+                                  const glm::vec3&) const override {
         // it behaves like a simple Lambertian surface for incoming light
         return BRDF::Lambert(1.0f, m_albedo);
     }

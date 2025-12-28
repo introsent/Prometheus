@@ -89,7 +89,7 @@ void SceneManager::addLight(Light* light) {
 }
 
 unsigned int SceneManager::addTriangleAreaLight(const std::vector<Vertex>& vertices, const glm::vec3& emission,
-    float intensity, unsigned char materialId)
+    float intensity, unsigned char)
 {
     // add triangle geometry
     unsigned char emissiveMat = addMaterial(new Material_Emissive(emission, intensity));
@@ -245,4 +245,11 @@ Mesh* SceneManager::getMesh(unsigned int meshIndex) const {
 
 size_t SceneManager::getMeshCount() const {
     return m_meshIndices.size();
+}
+
+MeshAreaLight* SceneManager::getMeshAreaLight(unsigned int index) const
+{
+    if (index < m_meshAreaLights.size())
+        return m_meshAreaLights[index].get();
+    return nullptr;
 }

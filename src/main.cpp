@@ -435,95 +435,266 @@ void createSceneC(SceneManager* pScene)
     pScene->addMeshAreaLight(ceilingLight_tri2, ceilingLight_indices2, {0.9f, 0.f, 0.f}, trianglesEmission, trianglesIntensity);
 }
 
+void createSceneC_BunnyOnly(SceneManager* pScene)
+{
+    // Lambert materials for room
+    const unsigned char matLambert_GrayBlue = pScene->addMaterial(
+        new Material_Lambert(glm::vec3(0.49f, 0.57f, 0.57f), 1.f));
+
+    const unsigned char matCT_GrayRoughMetal = pScene->addMaterial(
+        new Material_CookTorrence(glm::vec3(0.972f, 0.960f, 0.915f), 1.f, 1.f));
+    const unsigned char matCT_GraySmoothMetal = pScene->addMaterial(
+        new Material_CookTorrence(glm::vec3(0.972f, 0.960f, 0.915f), 1.f, 0.1f));
+
+    // Room planes
+    pScene->addPlane({0.f, 0.f, 10.f}, {0.f, 0.f, -1.f}, matLambert_GrayBlue);
+    pScene->addPlane({0.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, matLambert_GrayBlue);
+    pScene->addPlane({0.f, 10.f, 0.f}, {0.f, -1.f, 0.f}, matLambert_GrayBlue);
+    pScene->addPlane({5.f, 0.f, 0.f}, {-1.f, 0.f, 0.f}, matLambert_GrayBlue);
+    pScene->addPlane({-5.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, matLambert_GrayBlue);
+
+    // Just three spheres for testing
+    pScene->addSphere({-1.75f, 5.f, 5.f}, 0.75f, matCT_GrayRoughMetal);
+    pScene->addSphere({0.f, 5.f, 5.f}, 0.75f, matCT_GraySmoothMetal);
+    pScene->addSphere({1.75f, 5.f, 5.f}, 0.75f, matCT_GrayRoughMetal);
+
+    // Load bunny mesh AS ONLY LIGHT SOURCE (NO ceiling lights!)
+    std::vector<Vertex> bunnyVertices;
+    std::vector<uint32_t> bunnyIndices;
+
+    if (ParseOBJ("resources/lowpoly_bunny.obj", bunnyVertices, bunnyIndices)) {
+        auto transform = glm::mat4(1.0f);
+        transform = glm::rotate(transform, glm::radians(180.0f), glm::vec3(0.f, 1.f, 0.f));
+        transform = glm::scale(transform, glm::vec3(2.f, 2.f, 2.f));
+
+        for (auto& vertex : bunnyVertices) {
+            glm::vec4 pos(vertex.position.x, vertex.position.y, vertex.position.z, 1.0f);
+            glm::vec4 transformedPos = transform * pos;
+            vertex.position.x = transformedPos.x;
+            vertex.position.y = transformedPos.y;
+            vertex.position.z = transformedPos.z;
+
+            glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(transform)));
+            glm::vec3 normal(vertex.normal.x, vertex.normal.y, vertex.normal.z);
+            glm::vec3 transformedNormal = glm::normalize(normalMatrix * normal);
+            vertex.normal.x = transformedNormal.x;
+            vertex.normal.y = transformedNormal.y;
+            vertex.normal.z = transformedNormal.z;
+        }
+
+        // INCREASED intensity - bunny is ONLY light
+        glm::vec3 emission(1.0f, 1.0f, 1.0f);
+        float intensity = 50.0f;  // INCREASED from 10 to 50!
+
+        pScene->addMeshAreaLight(
+            bunnyVertices,
+            bunnyIndices,
+            {0.9f, 0.9f, 0.9f},
+            emission,
+            intensity
+        );
+
+        std::cout << "Scene: Bunny as ONLY light (" << (bunnyIndices.size() / 3) << " triangles)" << std::endl;
+    }
+}
+
+void createSceneD_FluxStressTest(SceneManager* pScene)
+{
+    // Camera is at (0, 3, -9) looking forward
+    // We need visible objects and visible lights
+
+    // --- Materials ---
+    const unsigned char matLambert_Gray = pScene->addMaterial(
+        new Material_Lambert(glm::vec3(0.7f, 0.7f, 0.7f), 1.f));
+
+    const unsigned char matCT_Shiny = pScene->addMaterial(
+        new Material_CookTorrence(glm::vec3(0.9f, 0.9f, 0.9f), 0.0f, 0.2f));
+
+    const unsigned char matCT_Rough = pScene->addMaterial(
+        new Material_CookTorrence(glm::vec3(0.7f, 0.7f, 0.7f), 0.0f, 0.8f));
+
+    // --- Room (same as SceneC) ---
+    pScene->addPlane({0.f, 0.f, 10.f}, {0.f, 0.f, -1.f}, matLambert_Gray);   // BACK
+    pScene->addPlane({0.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, matLambert_Gray);     // BOTTOM
+    pScene->addPlane({0.f, 10.f, 0.f}, {0.f, -1.f, 0.f}, matLambert_Gray);   // TOP
+    pScene->addPlane({5.f, 0.f, 0.f}, {-1.f, 0.f, 0.f}, matLambert_Gray);    // RIGHT
+    pScene->addPlane({-5.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, matLambert_Gray);    // LEFT
+
+    // --- Test objects (visible from camera) ---
+    std::vector<Vertex> lightVerts;
+    std::vector<uint32_t> lightIndices;
+
+    // Create 100 triangles in a grid
+    int gridSize = 10;
+    float cellSize = 0.8f;
+    float yPos = 9.8f;
+    float zStart = 4.0f;
+
+    for (int i = 0; i < gridSize; ++i) {
+        for (int j = 0; j < gridSize; ++j) {
+            float x0 = -4.0f + i * cellSize;
+            float z0 = zStart + j * cellSize;
+            float x1 = x0 + cellSize;
+            float z1 = z0 + cellSize;
+
+            // Two triangles per cell
+            uint32_t base = static_cast<uint32_t>(lightVerts.size());
+
+            lightVerts.push_back({{x0, yPos, z0}, {0, -1, 0}});
+            lightVerts.push_back({{x1, yPos, z0}, {0, -1, 0}});
+            lightVerts.push_back({{x1, yPos, z1}, {0, -1, 0}});
+            lightVerts.push_back({{x0, yPos, z1}, {0, -1, 0}});
+
+            lightIndices.push_back(base);
+            lightIndices.push_back(base + 1);
+            lightIndices.push_back(base + 2);
+
+            lightIndices.push_back(base);
+            lightIndices.push_back(base + 2);
+            lightIndices.push_back(base + 3);
+        }
+    }
+
+    // Add as mesh light
+    unsigned int lightIndex = pScene->addMeshAreaLight(
+        lightVerts,
+        lightIndices,
+        {1.0f, 1.0f, 1.0f},
+        glm::vec3(1.0f, 1.0f, 1.0f),
+        1.0f  // Base intensity
+    );
+
+    MeshAreaLight* light = pScene->getMeshAreaLight(lightIndex);
+    int totalTris = lightIndices.size() / 3;
+
+    // Make EXTREME flux variations:
+    for (int i = 0; i < totalTris; ++i) {
+        if (i == 5) {
+            light->setTriangleIntensity(i, 10000.0f);  // ONE super bright triangle
+        } else if (i < 20) {
+            light->setTriangleIntensity(i, 100.0f);    // Some medium ones
+        } else {
+            light->setTriangleIntensity(i, 0.01f);     // Most very dim
+        }
+    }
+
+    light->updateBVH();
+
+    std::cout << "\n=== FLUX STRESS TEST ===\n";
+    std::cout << "Total triangles: " << totalTris << "\n";
+    std::cout << "Triangle 5 intensity: 10000.0 (super bright)\n";
+    std::cout << "Triangles 0-19 intensity: 100.0 (medium)\n";
+    std::cout << "Other triangles intensity: 0.01 (very dim)\n";
+    std::cout << "=========================\n";
+
+    pScene->addSphere({-2.0f, 3.0f, 6.0f}, 0.8f, matCT_Shiny);
+    pScene->addSphere({0.0f, 3.0f, 6.0f}, 0.8f, matCT_Shiny);
+    pScene->addSphere({2.0f, 3.0f, 6.0f}, 0.8f, matCT_Shiny);
+}
+
+
+void createSimpleTest(SceneManager* pScene) {
+    // Just 3 triangles with DIFFERENT fluxes
+    std::vector<Vertex> verts = {
+        {{-1, 9, 4}, {0,-1,0}},
+        {{ 1, 9, 4}, {0,-1,0}},
+        {{ 0, 9, 6}, {0,-1,0}},
+
+        {{ 2, 9, 4}, {0,-1,0}},
+        {{ 4, 9, 4}, {0,-1,0}},
+        {{ 3, 9, 6}, {0,-1,0}}
+    };
+
+    std::vector<uint32_t> indices = {0,1,2, 3,4,5};
+
+    unsigned int lightIndex = pScene->addMeshAreaLight(
+        verts,
+        indices,
+        {1,1,1},
+        glm::vec3(1,1,1),
+        1.0f
+    );
+
+    MeshAreaLight* light = pScene->getMeshAreaLight(lightIndex);
+    // Make triangle 0 BRIGHT, triangle 1 dim
+    light->setTriangleIntensity(0, 1000.0f);
+    light->setTriangleIntensity(1, 0.1f);
+
+    std::cout << "Simple test: 2 triangles, one bright (1000), one dim (0.1)" << std::endl;
+}
+
 int main(int argc, char* argv[])
 {
     constexpr uint32_t WIDTH = 640;
     constexpr uint32_t HEIGHT = 480;
 
-    // check for test mode argument
     bool testMode = false;
-    std::string customFolder = "";
+    std::string strategyStr = "hier";
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--test-samples" || arg == "-t") {
             testMode = true;
-        } else if (arg == "--output" || arg == "-o") {
+        } else if (arg == "--strategy" || arg == "-s") {
             if (i + 1 < argc) {
-                customFolder = argv[++i];
+                strategyStr = argv[++i];
             }
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Usage: " << argv[0] << " [options]" << std::endl;
             std::cout << "Options:" << std::endl;
-            std::cout << "  -t, --test-samples    Run area light sampling test" << std::endl;
-            std::cout << "  -o, --output <folder> Specify output folder for test" << std::endl;
-            std::cout << "  -h, --help            Show this help message" << std::endl;
+            std::cout << "  -t, --test-samples           Run sampling test" << std::endl;
+            std::cout << "  -s, --strategy <name>        uniform, areaimportance, hierarchical" << std::endl;
+            std::cout << "  -h, --help                   Show this help" << std::endl;
             return 0;
         }
     }
 
-    // initialize renderer
-    auto pRenderer = std::make_unique<Renderer>(WIDTH, HEIGHT);
-
-    if (!pRenderer->initialize()) {
-        std::cerr << "Failed to initialize renderer" << std::endl;
+    SamplingStrategy strategy;
+    if (strategyStr == "uniform") {
+        strategy = SamplingStrategy::Uniform;
+    } else if (strategyStr == "areaimportance" || strategyStr == "area") {
+        strategy = SamplingStrategy::AreaImportance;
+    } else if (strategyStr == "hierarchical" || strategyStr == "hier") {
+        strategy = SamplingStrategy::HierarchicalFlux;
+    } else {
+        std::cerr << "Unknown strategy: " << strategyStr << std::endl;
         return -1;
     }
 
-    // create scene
+    auto pRenderer = std::make_unique<Renderer>(WIDTH, HEIGHT);
+    if (!pRenderer->initialize()) {
+        return -1;
+    }
+
     auto pScene = std::make_unique<SceneManager>();
     auto pCamera = std::make_unique<Camera>(
-        glm::vec3{0.f, 3.f, -9.f},
-        45.f,
+        glm::vec3{0.f, 3.f, -9.f}, 45.f,
         static_cast<float>(WIDTH) / static_cast<float>(HEIGHT)
     );
 
-    // use scene with area lights
     createSceneC(pScene.get());
     pScene->commit();
 
+    // CRITICAL: Set strategy AFTER scene creation
+    pRenderer->setAreaLightStrategy(*pScene, strategy);
+
     if (testMode) {
-        if (!customFolder.empty()) {
-            // use custom folder if specified
-            std::cout << "Using custom output folder: " << customFolder << std::endl;
-        }
-
-        std::cout << "\n=== Area Light Sampling Test ===" << std::endl;
-        std::cout << "Scene: Scene C (Mesh area light bunny + triangle area lights)" << std::endl;
-        std::cout << "Resolution: " << WIDTH << "x" << HEIGHT << std::endl;
-        std::cout << "Press ESC to interrupt the test at any time." << std::endl;
-        std::cout << "Press SPACE to pause/resume the test.\n" << std::endl;
-
+        std::cout << "\n==================================" << std::endl;
+        std::cout << "Testing: " << strategyStr << std::endl;
+        std::cout << "==================================" << std::endl;
         pRenderer->setTestMode(true);
     }
 
-    // timer for FPS display (only in non-test mode)
     auto pTimer = std::make_unique<Timer>();
     pTimer->reset();
     pTimer->start();
 
-    float printTimer = 0.f;
-
-    // main loop
     while (!pRenderer->shouldQuit()) {
-        // update scene
         pScene->update(pTimer.get());
-
-        // render
         pRenderer->render(*pCamera, *pScene);
         pRenderer->present();
-
-        // update timer and show FPS (only in non-test mode)
         pTimer->update();
-        printTimer += pTimer->getElapsed();
-
-        if (!testMode && printTimer >= 1.f) {
-            printTimer = 0.f;
-            std::cout << "FPS: " << pTimer->getdFPS() << std::endl;
-        }
     }
 
-    pTimer->stop();
-    std::cout << "Application shutdown complete" << std::endl;
     return 0;
 }

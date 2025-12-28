@@ -12,8 +12,6 @@
 #include "scene_manager.h"
 #include "ray_tracer.h"
 
-// Define this to enable parallel execution
-#define PARALLEL_EXECUTION
 
 class Renderer {
 public:
@@ -31,6 +29,8 @@ public:
     void present();
     bool shouldQuit();
 
+    void setAreaLightStrategy(SceneManager& scene, SamplingStrategy strategy);
+
 private:
     static SDL_Color toSDLColor(const glm::vec3& color);
 
@@ -45,6 +45,9 @@ private:
     int m_currentSamples;
     int m_maxSamples;
     std::vector<int> m_sampleCounts;
+
+    SamplingStrategy m_currentStrategy;
+    std::string m_strategyName;
 
     std::string m_testFolder;
     void createTestFolder();
