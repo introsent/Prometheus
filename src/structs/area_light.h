@@ -5,6 +5,8 @@
 #ifndef PROMETHEUS_AREA_LIGHT_H
 #define PROMETHEUS_AREA_LIGHT_H
 
+#include <functional>
+
 #include "glm/vec3.hpp"
 #include "glm/geometric.hpp"
 #include <vector>
@@ -13,6 +15,8 @@
 
 class Triangle;
 class SceneManager;
+class SpatialVisibilityCache;
+class VisibilityAwareHierarchicalSampler;
 
 /// Sampling strategy
 enum class SamplingStrategy
@@ -29,6 +33,7 @@ struct AreaLightSample
     glm::vec3 position;
     glm::vec3 normal;
     float pdf; // probability density function (the larger the light, the brighter should it be)
+    float misWeight;     // MIS weight (default 1.0 for non-MIS strategies)
     glm::vec3 radiance;
     float area;
 };
@@ -245,7 +250,7 @@ public:
                  const glm::vec3& emission,
                  float intensity,
                  SceneManager* scene);
-    ~MeshAreaLight() = default;
+    ~MeshAreaLight();
 
     // sampling methods with explicit strategy
     [[nodiscard]] AreaLightSample sampleUniform(const glm::vec3& shadingPoint,
@@ -256,6 +261,9 @@ public:
 
     [[nodiscard]] AreaLightSample sampleHierarchicalFlux(const glm::vec3& shadingPoint,
                                                       float u1, float u2, float u3) const;
+
+    [[nodiscard]] AreaLightSample sampleVisibilityAware(const glm::vec3& shadingPoint,
+    float u1, float u2, float u3) const;
 
     // convenience method that uses current strategy
     [[nodiscard]] AreaLightSample sample(const glm::vec3& shadingPoint,
@@ -289,12 +297,52 @@ public:
         buildBVH();
     }
 
+    void validateBVH() const {
+        if (m_rootNodeIndex >= 0) {
+            std::function<void(int)> traverse = [&](int nodeIndex) {
+                const BVHNode& node = m_bvhNodes[nodeIndex];
+                if (node.isLeaf) {
+                    assert(node.triangleIndices.size() > 0);
+                } else {
+                    assert(node.leftChild >= 0 && node.rightChild >= 0);
+                    traverse(node.leftChild);
+                    traverse(node.rightChild);
+                }
+            };
+            traverse(m_rootNodeIndex);
+        }
+    }
+
+    // add visibility cache (shared across all lights)
+    static std::unique_ptr<SpatialVisibilityCache> s_visibilityCache;
+    // per-light sampler
+    std::unique_ptr<VisibilityAwareHierarchicalSampler> m_visAwareSampler;
+
+    // init visibility cache (call once at scene setup)
+    static void initializeVisibilityCache(const glm::vec3& sceneMin,
+                                         const glm::vec3& sceneMax,
+                                         int resolution = 16);
+
+    // get visibility statistics
+    static void getVisibilityStats(int& totalCells, int& activeCells,
+                                   int& totalSamples);
+
+    // clear visibility cache (for new scene)
+    static void clearVisibilityCache();
+
+    // Accessor methods
+    int getLastSampledNode() const { return m_lastSampledNode; }
+    void setLastSampledNode(int nodeIndex) const { m_lastSampledNode = nodeIndex; }
+
 private:
+    friend class VisibilityAwareHierarchicalSampler;
+    mutable int m_lastSampledNode = -1;
+
     struct TriangleData {
-        glm::vec3 v0, v1, v2;
-        glm::vec3 normal;
-        float intensity;
-        float area;
+        glm::vec3 v0{}, v1{}, v2{};
+        glm::vec3 normal{};
+        float intensity{};
+        float area{};
         std::unique_ptr<UniformTriangleSampler> uniformSampler;
         std::unique_ptr<AreaImportanceTriangleSampler> areaImportanceSampler;
 
@@ -314,13 +362,13 @@ private:
     std::vector<BVHNode> m_bvhNodes;
     int m_rootNodeIndex;
 
-    // Triangle info for BVH construction
+    // triangle info for BVH construction
     struct TriangleInfo {
         glm::vec3 centroid;
         glm::vec3 bboxMin, bboxMax;
         float flux;
         float area;
-        int originalIndex;  // Index in m_triangles
+        int originalIndex;  // index in m_triangles
 
         TriangleInfo(const glm::vec3& cent, const glm::vec3& min, const glm::vec3& max,
                      float f, float a, int idx)
@@ -357,8 +405,11 @@ private:
     SamplingStrategy m_strategy;
 
     std::vector<TriangleData> m_triangles;
-    std::vector<float> m_areaCDF;      // For uniform sampling
+    std::vector<float> m_areaCDF;      // for uniform sampling
     float m_totalArea;
+
+
+
 };
 
 

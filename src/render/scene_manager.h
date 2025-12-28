@@ -79,6 +79,10 @@ public:
 
     [[nodiscard]] MeshAreaLight* getMeshAreaLight(unsigned int index) const;
 
+    [[nodiscard]] int getNumMeshes() const {
+        return static_cast<int>(getMeshCount());
+    }
+
 
 private:
     std::unique_ptr<EmbreeDevice> m_devicePtr;

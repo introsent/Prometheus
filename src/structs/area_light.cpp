@@ -11,6 +11,7 @@
 #include "triangle.h"
 #include "render/scene_manager.h"
 #include "math_helpers.h"
+#include "visibility_aware_mis.h"
 
 // static helpers
 /// S1: Uniform Triangle Sampler implementation
@@ -49,6 +50,7 @@ AreaLightSample UniformTriangleSampler::sample(const glm::vec3& shadingPoint,
         position,
         m_normal,
         pdf,
+        1.f,
         radiance,
         m_area
     };
@@ -93,35 +95,36 @@ AreaLightSample AreaImportanceTriangleSampler::sample(const glm::vec3& shadingPo
     const glm::vec3 direction = sampleSphericalTriangle(shadingPoint, u1, u2, &pdfSolidAngle);
 
     if (pdfSolidAngle <= 0.0f) {
-        return {shadingPoint, m_normal, 0.0f, glm::vec3(0), m_area};
+        return {shadingPoint, m_normal, 0.0f, 1.f, glm::vec3(0), m_area};
     }
 
     // intersect ray with triangle plane to get exact position
     auto [t, position] = getRayPlaneIntersection(shadingPoint, direction);
     if (position == glm::vec3(0.f)) {
-        return {shadingPoint, m_normal, 0.0f, glm::vec3(0), m_area};
+        return {shadingPoint, m_normal, 0.0f, 1.f, glm::vec3(0), m_area};
     }
     //recomputePositionUsingBarycentricCoordinates(t, position);
 
     // use the ray parameter t directly for distance (more numerically stable)
     float r = t;
-    if (r <= 1e-6f) return {position, m_normal, 0.0f, glm::vec3(0), m_area};
+    if (r <= 1e-6f) return {position, m_normal, 0.0f, 1.f, glm::vec3(0), m_area};
 
     // cosine at light (direction is already normalized)
     const float cos_theta_light = glm::dot(m_normal, -direction);
 
-    if (cos_theta_light <= 0.0f) return {position, m_normal, 0.0f, glm::vec3(0), m_area};
+    if (cos_theta_light <= 0.0f) return {position, m_normal, 0.0f, 1.f, glm::vec3(0), m_area};
 
     // convert solid-angle pdf to area pdf using jacobian
     float pdfArea = pdfSolidAngle * (cos_theta_light / (r * r));
     if (!std::isfinite(pdfArea) || pdfArea <= 0.0f) {
-        return {position, m_normal, 0.0f, glm::vec3(0), m_area};
+        return {position, m_normal, 0.0f, 1.f, glm::vec3(0), m_area};
     }
 
     return {
         position,
         m_normal,
         pdfArea,
+        1.f,
         m_emission * m_intensity,
         m_area
     };
@@ -466,6 +469,8 @@ void TriangleAreaLight::setSamplingStrategy(SamplingStrategy strategy) {
     }
 }
 
+std::unique_ptr<SpatialVisibilityCache> MeshAreaLight::s_visibilityCache = nullptr;
+
 /// Mesh Area light implementation
 MeshAreaLight::MeshAreaLight(unsigned int meshIndex,
                             const glm::vec3& emission,
@@ -540,7 +545,20 @@ MeshAreaLight::MeshAreaLight(unsigned int meshIndex,
 
     // optional: Print BVH statistics
     printBVHStats();
+
+    if (s_visibilityCache) {
+        VisibilityAwareHierarchicalSampler::Configuration config;
+        config.enableVisibilityLearning = true;
+        config.enableMIS = true;
+        config.visibilityWeight = 0.5f; // 50% flux, 50% visibility
+
+        m_visAwareSampler = std::make_unique<VisibilityAwareHierarchicalSampler>(
+            this, s_visibilityCache.get(), config
+        );
+    }
 }
+
+MeshAreaLight::~MeshAreaLight() = default;
 
 void MeshAreaLight::setTriangleIntensity(size_t triangleIndex, float intensity)
 {
@@ -1029,7 +1047,7 @@ AreaLightSample MeshAreaLight::sampleHierarchicalFlux(const glm::vec3 &shadingPo
     }
 
     if (fluxSum <= 0.0f) {
-        return AreaLightSample{};
+        return sampleUniform(shadingPoint, u1, u2, u3);
     }
 
     // Select triangle proportional to its flux
@@ -1088,6 +1106,8 @@ AreaLightSample MeshAreaLight::sample(const glm::vec3& shadingPoint,
             return sampleAreaImportance(shadingPoint, u1, u2, u3);
         case SamplingStrategy::HierarchicalFlux:
             return sampleHierarchicalFlux(shadingPoint, u1, u2, u3);
+        case SamplingStrategy::VisibilityAwareHierarchical:
+            return sampleVisibilityAware(shadingPoint, u1, u2, u3);
         default:
             return sampleUniform(shadingPoint, u1, u2, u3);
     }
@@ -1096,9 +1116,7 @@ AreaLightSample MeshAreaLight::sample(const glm::vec3& shadingPoint,
 float MeshAreaLight::pdfUniform(const glm::vec3& shadingPoint,
                                const glm::vec3& lightPoint) const {
     // find which triangle contains the point
-    for (size_t i = 0; i < m_triangles.size(); ++i) {
-        const TriangleData& tri = m_triangles[i];
-
+    for (const auto & tri : m_triangles) {
         float u, v, w;
         if (isPointInTriangle(lightPoint, tri.v0, tri.v1, tri.v2, u, v, w)) {
             // point is on this triangle
@@ -1135,7 +1153,7 @@ float MeshAreaLight::pdfAreaImportance(const glm::vec3& shadingPoint,
 
         float u, v, w;
         if (isPointInTriangle(lightPoint, tri.v0, tri.v1, tri.v2, u, v, w)) {
-            // Point is on this triangle
+            // point is on this triangle
             float trianglePdf = tri.areaImportanceSampler->pdf(shadingPoint, lightPoint);
             float selectionProb = solidAngles[i] / totalSolidAngle;
             return trianglePdf * selectionProb;
@@ -1232,6 +1250,53 @@ void BVHNode::initializeLeafNode(int start, int end, float flux, float a) {
     endTri = end;
     totalFlux = flux;
     totalArea = a;
+}
+
+void MeshAreaLight::initializeVisibilityCache(const glm::vec3& sceneMin,
+                                              const glm::vec3& sceneMax,
+                                              int resolution) {
+    s_visibilityCache = std::make_unique<SpatialVisibilityCache>(
+        sceneMin, sceneMax, resolution
+    );
+}
+
+void MeshAreaLight::getVisibilityStats(int& totalCells, int& activeCells,
+                                       int& totalSamples) {
+    if (s_visibilityCache) {
+        s_visibilityCache->getStatistics(totalCells, activeCells, totalSamples);
+    }
+}
+
+void MeshAreaLight::clearVisibilityCache() {
+    if (s_visibilityCache) {
+        s_visibilityCache->reset();
+    }
+}
+
+AreaLightSample MeshAreaLight::sampleVisibilityAware(
+    const glm::vec3& shadingPoint,
+    float u1, float u2, float u3) const {
+
+    if (!m_visAwareSampler) {
+        // fallback to hierarchical flux
+        return sampleHierarchicalFlux(shadingPoint, u1, u2, u3);
+    }
+
+    // use visibility-aware sampler
+    auto sample = m_visAwareSampler->sampleLight(
+        shadingPoint,
+        glm::vec3(0, 1, 0), // Normal (get from hit point in renderer)
+        u1, u2, u3
+    );
+
+    return AreaLightSample{
+        sample.position,
+        sample.normal,
+        sample.pdf , // apply MIS weight to PDF
+        sample.misWeight,
+        sample.radiance,
+        m_totalArea
+    };
 }
 
 

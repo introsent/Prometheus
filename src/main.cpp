@@ -623,13 +623,69 @@ void createSimpleTest(SceneManager* pScene) {
     std::cout << "Simple test: 2 triangles, one bright (1000), one dim (0.1)" << std::endl;
 }
 
+void setupScene(SceneManager& scene) {
+    // calculate scene bounds
+    glm::vec3 sceneMin(FLT_MAX);
+    glm::vec3 sceneMax(-FLT_MAX);
+
+    // compute from all meshes
+    for (int i = 0; i < scene.getNumMeshes(); ++i) {
+        Mesh* mesh = scene.getMesh(i);
+        if (!mesh) continue;
+
+        const auto& vertices = mesh->getOriginalVertices();
+        for (const auto& v : vertices) {
+            glm::vec3 pos(v.position.x, v.position.y, v.position.z);
+            sceneMin = glm::min(sceneMin, pos);
+            sceneMax = glm::max(sceneMax, pos);
+        }
+    }
+
+    // check all lights
+    const auto& lights = scene.getLights();
+    for (const auto& light : lights) {
+        if (light->type == LightType::MeshArea && light->meshAreaLight) {
+            // mesh area lights are already included in meshes
+            continue;
+        }
+        sceneMin = glm::min(sceneMin, light->origin);
+        sceneMax = glm::max(sceneMax, light->origin);
+    }
+
+    // add padding (10% of scene size)
+    glm::vec3 extent = sceneMax - sceneMin;
+    glm::vec3 padding = extent * 0.1f;
+    sceneMin -= padding;
+    sceneMax += padding;
+
+    std::cout << "Scene bounds: " << sceneMin.x << "," << sceneMin.y << "," << sceneMin.z
+              << " to " << sceneMax.x << "," << sceneMax.y << "," << sceneMax.z << std::endl;
+
+    // init visibility cache
+    MeshAreaLight::initializeVisibilityCache(sceneMin, sceneMax, 16);
+
+    std::cout << "Visibility cache initialized for scene" << std::endl;
+}
+
+void printVisibilityStats() {
+    int totalCells, activeCells, totalSamples;
+    MeshAreaLight::getVisibilityStats(totalCells, activeCells, totalSamples);
+
+    std::cout << "Visibility Cache Stats:" << std::endl;
+    std::cout << "  Total cells: " << totalCells << std::endl;
+    std::cout << "  Active cells: " << activeCells << " ("
+              << (100.0f * activeCells / totalCells) << "%)" << std::endl;
+    std::cout << "  Total samples: " << totalSamples << std::endl;
+}
+
+
 int main(int argc, char* argv[])
 {
     constexpr uint32_t WIDTH = 640;
     constexpr uint32_t HEIGHT = 480;
 
     bool testMode = false;
-    std::string strategyStr = "hier";
+    std::string strategyStr = "vis";
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -656,6 +712,8 @@ int main(int argc, char* argv[])
         strategy = SamplingStrategy::AreaImportance;
     } else if (strategyStr == "hierarchical" || strategyStr == "hier") {
         strategy = SamplingStrategy::HierarchicalFlux;
+    } else if (strategyStr == "visibilityaware" || strategyStr == "vis") {
+        strategy = SamplingStrategy::VisibilityAwareHierarchical;
     } else {
         std::cerr << "Unknown strategy: " << strategyStr << std::endl;
         return -1;
@@ -674,6 +732,7 @@ int main(int argc, char* argv[])
 
     createSceneC(pScene.get());
     pScene->commit();
+    setupScene(*pScene);
 
     // CRITICAL: Set strategy AFTER scene creation
     pRenderer->setAreaLightStrategy(*pScene, strategy);

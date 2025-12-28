@@ -14,6 +14,8 @@
 #include <chrono>
 #include <filesystem>
 
+#include "visibility_aware_mis.h"
+
 #if defined(PARALLEL_EXECUTION)
 #include <execution>
 #endif
@@ -145,10 +147,11 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
     const auto& lights = scene.getLights();
 
     // determine number of samples to use
-    int areaLightSamples = m_testMode ? m_currentSamples : 8;
+    int areaLightSamples = m_testMode ? m_currentSamples : 128;
 
     // display current sample count
     if (m_testMode) {
+        MeshAreaLight::clearVisibilityCache();
         std::cout << "Rendering with " << areaLightSamples << " samples..." << std::endl;
     }
 
@@ -259,7 +262,6 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
                             color += areaLightContrib / static_cast<float>(areaLightSamples);
                         }
                         else if (pLight->type == LightType::MeshArea) {
-                            // Mesh Area Light (Monte Carlo)
                             MeshAreaLight* meshLight = pLight->meshAreaLight;
                             if (!meshLight) continue;
 
@@ -271,6 +273,8 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
                                 const float u3 = rng.get();
 
                                 const AreaLightSample lightSample = meshLight->sample(hit.origin, u1, u2, u3);
+
+                                if (lightSample.pdf <= 0.0f) continue;
 
                                 glm::vec3 lightDir = lightSample.position - hit.origin;
                                 const float distSq = glm::dot(lightDir, lightDir);
@@ -284,12 +288,26 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
                                 if (cosTheta_light <= 0.0f) continue;
 
                                 const Ray shadowRay{hit.origin, lightDir, 0.0001f, dist - 0.0001f};
-                                if (tracer.isOccluded(shadowRay)) continue;
+                                bool wasVisible = !tracer.isOccluded(shadowRay);
+
+                                if (meshLight->m_visAwareSampler) {
+                                    int sampledNode = meshLight->getLastSampledNode();
+                                    meshLight->m_visAwareSampler->recordVisibilitySample(
+                                        hit.origin, sampledNode, wasVisible
+                                    );
+                                }
+
+                                if (!wasVisible) continue;
 
                                 const glm::vec3 brdf = mat->shade(hit.origin, hit.normal, viewDir, lightDir);
                                 const float geometricTerm = cosTheta_light / distSq;
-                                const glm::vec3 contribution =
+
+                                // calculate contribution with MIS weight
+                                glm::vec3 contribution =
                                     lightSample.radiance * brdf * cosTheta * geometricTerm / lightSample.pdf;
+
+                                // apply MIS weight
+                                contribution *= lightSample.misWeight;
 
                                 areaLightContrib += contribution;
                             }
