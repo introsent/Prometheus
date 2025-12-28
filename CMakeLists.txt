@@ -157,6 +157,12 @@ add_executable(Prometheus
         src/area_lights/acceleration/bvh_node.h
         src/area_lights/acceleration/bvh_config.h
         src/area_lights/acceleration/triangle_build_info.h
+        src/area_lights/visibility/node_visibility_stats.h
+        src/area_lights/visibility/visibility_cache_cell.h
+        src/area_lights/visibility/spatial_visibility_cache.cpp
+        src/area_lights/visibility/spatial_visibility_cache.h
+        src/area_lights/mis/mis_weights.h
+        src/area_lights/mis/bsdf_sampler.h
 )
 
 # Copy resources to output folder
