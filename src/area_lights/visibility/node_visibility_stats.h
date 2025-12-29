@@ -42,18 +42,17 @@ struct NodeVisibilityStats {
     // get estimated visibility probability
     // returns 1.0 if no samples recorded yet (optimistic default)
     [[nodiscard]] float getVisibilityProbability() const {
-        const uint32_t total = totalSamples.load(std::memory_order_relaxed);
+        const uint32_t total = totalSamples.load(std::memory_order_acquire);
         if (total == 0) return 1.0f;
-
-        const uint32_t visible = visibleSamples.load(std::memory_order_relaxed);
+        const uint32_t visible = visibleSamples.load(std::memory_order_acquire);
         return static_cast<float>(visible) / static_cast<float>(total);
     }
 
     // record a new sample
     void recordSample(bool wasVisible) {
-        totalSamples.fetch_add(1, std::memory_order_relaxed);
+        totalSamples.fetch_add(1, std::memory_order_release);
         if (wasVisible) {
-            visibleSamples.fetch_add(1, std::memory_order_relaxed);
+            visibleSamples.fetch_add(1, std::memory_order_release);
         }
     }
 };

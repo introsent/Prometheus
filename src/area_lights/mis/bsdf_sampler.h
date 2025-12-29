@@ -29,6 +29,9 @@ public:
     static BSDFSample sampleDiffuse(
         const glm::vec3& normal,
         float u1, float u2) {
+        u1 = std::max(1e-6f, u1);
+        u1 = std::min(u1, 1.0f - 1e-6f);
+
 
         BSDFSample sample{};
 

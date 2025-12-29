@@ -167,6 +167,7 @@ add_executable(Prometheus
         src/area_lights/samplers/visibility_aware_sampler.cpp
         src/area_lights/samplers/hierarchical_light_sampler.cpp
         src/area_lights/samplers/hierarchical_light_sampler.h
+        src/area_lights/mis/mis_validation.h
 )
 
 # Copy resources to output folder

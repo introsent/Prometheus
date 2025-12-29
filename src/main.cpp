@@ -13,6 +13,7 @@
 #include "render/scene_manager.h"
 #include "camera/camera.h"
 #include "lights/mesh_area_light.h"
+#include "mis/mis_validation.h"
 #include "parser/obj_parser.h"
 #include "render/renderer.h"
 #include "structs/material.h"
@@ -356,14 +357,14 @@ void createSceneC(SceneManager* pScene)
         new Material_Lambert(colors::white, 1.f));
 
     // bottom row spheres (metals with varying roughness)
-    pScene->addSphere({-1.75f, 1.f, 5.f}, 0.75f, matCT_GrayRoughMetal);
-    pScene->addSphere({0.f, 1.f, 5.f}, 0.75f, matCT_GrayMediumMetal);
-    pScene->addSphere({1.75f, 1.f, 5.f}, 0.75f, matCT_GraySmoothMetal);
+    pScene->addSphere({-1.75f, 4.f, 6.f}, 0.75f, matCT_GrayRoughMetal);
+    pScene->addSphere({0.f, 4.f, 6.f}, 0.75f, matCT_GrayMediumMetal);
+    pScene->addSphere({1.75f, 4.f, 6.f}, 0.75f, matCT_GraySmoothMetal);
 
     // top row spheres (plastics with varying roughness)
-    pScene->addSphere({-1.75f, 3.f, 5.f}, 0.75f, matCT_GrayRoughPlastic);
-    pScene->addSphere({0.f, 3.f, 5.f}, 0.75f, matCT_GrayMediumPlastic);
-    pScene->addSphere({1.75f, 3.f, 5.f}, 0.75f, matCT_GraySmoothPlastic);
+    pScene->addSphere({-1.75f, 7.f, 6.f}, 0.75f, matCT_GrayRoughPlastic);
+    pScene->addSphere({0.f, 7.f, 6.f}, 0.75f, matCT_GrayMediumPlastic);
+    pScene->addSphere({1.75f, 7.f, 6.f}, 0.75f, matCT_GraySmoothPlastic);
 
     // load bunny mesh AS AN AREA LIGHT
     std::vector<Vertex> bunnyVertices;
@@ -396,7 +397,7 @@ void createSceneC(SceneManager* pScene)
 
         // define emission properties
         glm::vec3 emission(1.0f, 1.0f, 1.0f);
-        float intensity = 10.0f;  // high intensity since bunny is the only light source
+        float intensity = 20.f;  // high intensity since bunny is the only light source
 
         // add bunny as a MESH AREA LIGHT
         pScene->addMeshAreaLight(
@@ -685,11 +686,16 @@ int main(int argc, char* argv[])
     constexpr uint32_t WIDTH = 640;
     constexpr uint32_t HEIGHT = 480;
 
+    bool genGroundTruth = false;
+
     bool testMode = false;
     std::string strategyStr = "vis";
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
+        if (arg == "--gt") {
+            genGroundTruth = true;
+        }
         if (arg == "--test-samples" || arg == "-t") {
             testMode = true;
         } else if (arg == "--strategy" || arg == "-s") {
@@ -705,6 +711,7 @@ int main(int argc, char* argv[])
             return 0;
         }
     }
+
 
     SamplingStrategy strategy;
     if (strategyStr == "uniform") {
@@ -737,6 +744,19 @@ int main(int argc, char* argv[])
 
     // CRITICAL: Set strategy AFTER scene creation
     pRenderer->setAreaLightStrategy(*pScene, strategy);
+
+    if (genGroundTruth) {
+        // generate and save GT using visibility-aware hierarchical strategy (recommended)
+        std::string gtDir = "tests/ground_truth";
+        std::cout << "Generating canonical ground truth into: " << gtDir << std::endl;
+        pRenderer->generateGroundTruth(*pCamera, *pScene,
+                                       SamplingStrategy::Uniform,
+                                       /*samples=*/8192,
+                                       gtDir);
+        return 0; // exit after GT
+    }
+
+    MISValidation::runAllTests();
 
     if (testMode) {
         std::cout << "\n==================================" << std::endl;

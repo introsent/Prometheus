@@ -106,9 +106,17 @@ VisibilityAwareHierarchicalSampler::sampleLight(const glm::vec3& shadingPoint,
         glm::vec3 lightDir = glm::normalize(triangleSample.position - shadingPoint);
         float bsdfPdf = BSDFSampler::pdfDiffuse(normal, lightDir);
 
+        float distanceSq = glm::dot(triangleSample.position - shadingPoint,
+                                  triangleSample.position - shadingPoint);
+        float cosLight = glm::dot(triangleSample.normal, -lightDir);
+        cosLight = std::max(cosLight, 1e-4f);
+
+        // convert light PDF to solid angle measure
+        float lightPdfSolidAngle = lightSamplingPdf * distanceSq / cosLight;
+
         misWeight = MISWeightCalculator::calculateWeight(
-            lightSamplingPdf,
-            bsdfPdf,
+            lightPdfSolidAngle,  // in solid angle measure
+            bsdfPdf,             // in solid angle measure
             m_config.misHeuristic
         );
     }

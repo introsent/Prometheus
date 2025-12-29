@@ -4,6 +4,10 @@ echo Area Light Sampling Test Suite
 echo ===================================
 
 echo.
+echo Generate ground truth...
+Prometheus.exe --gt
+
+echo.
 echo [1/4] Testing Uniform Sampling...
 Prometheus.exe -t -s uniform
 

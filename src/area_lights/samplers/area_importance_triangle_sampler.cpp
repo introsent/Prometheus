@@ -38,7 +38,7 @@ AreaLightSample AreaImportanceTriangleSampler::sample(
     }
 
     // convert solid angle pdf to area pdf using jacobian
-    // pdf_area = pdf_solidAngle * |cos(theta)| / r²
+    // pdf_area = pdf_solidAngle * |cos(theta)| / r^2
     //
     // where:
     //   theta = angle between light normal and direction to shading point

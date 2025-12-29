@@ -306,11 +306,9 @@ float MeshAreaLight::pdfAreaImportance(
     return trianglePdf * selectionProb;
 }
 
-// ============================================================================
-// hierarchical flux sampling
-// use BVH to select lights proportional to flux/distance²
-// ============================================================================
 
+/// Hierarchical flux sampling
+// use BVH to select lights proportional to flux/distance²
 AreaLightSample MeshAreaLight::sampleHierarchicalFlux(
     const glm::vec3& shadingPoint,
     float u1, float u2, float u3) const {
@@ -408,10 +406,8 @@ AreaLightSample MeshAreaLight::sampleVisibilityAware(
     };
 }
 
-// ============================================================================
-// BVH management
-// ============================================================================
 
+/// BVH management
 void MeshAreaLight::buildBVH() {
     if (m_triangles.empty()) {
         return;
@@ -774,7 +770,7 @@ void MeshAreaLight::setSamplingStrategy(SamplingStrategy strategy) {
 
         VisibilityAwareHierarchicalSampler::Configuration config;
         config.enableVisibilityLearning = true;
-        config.enableMIS = false;
+        config.enableMIS = true;
         config.visibilityWeight = 0.5f;
         config.misHeuristic = MISHeuristic::Balance;
 
