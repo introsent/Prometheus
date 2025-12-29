@@ -96,6 +96,6 @@ private:
     std::string m_groundTruthImage = "gt.bmp";
     std::string m_groundTruthRaw = "gt.bin";
     bool m_groundTruthComputed = false;
-    int m_groundTruthSamples = 2048;
+    int m_groundTruthSamples = 8192;
 };
 #endif //RENDERER_H

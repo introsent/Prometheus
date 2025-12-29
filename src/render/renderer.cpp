@@ -180,7 +180,8 @@ bool Renderer::initialize() {
 void Renderer::render(const Camera& camera, const SceneManager& scene) {
     auto renderStart = std::chrono::high_resolution_clock::now();
 
-    // If test mode and ground truth not computed yet -> try to load it from disk first
+    /// GROUND TRUTH HANDLING
+    // if test mode and ground truth not computed yet -> try to load it from disk first
     if (m_testMode && !m_groundTruthComputed) {
         // ensure ground-truth dir exists
         try {
@@ -201,9 +202,10 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
         }
     }
 
-    // If still not computed and test-mode -> generate in-process ground truth (fallback)
+    // if still not computed and test-mode -> generate ground truth
     if (m_testMode && !m_groundTruthComputed) {
-        std::cout << "Rendering ground-truth with " << m_groundTruthSamples << " samples (this may take a while)..." << std::endl;
+        std::cout << "Rendering ground-truth with " << m_groundTruthSamples
+                  << " samples (this may take a while)..." << std::endl;
 
         std::chrono::duration<double> gtDuration{};
         renderSceneIntoBuffer(camera, scene, m_groundTruthPixels, m_groundTruthSamples, &gtDuration);
@@ -224,9 +226,11 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
         saveScreenshot(m_groundTruthPixels, m_groundTruthImage);
         m_testFolder = oldTestFolder;
 
+        // save ground truth timing
         std::ofstream timingFile(getTestFolderPath() + "/timing_results.txt", std::ios::app);
         if (timingFile.is_open()) {
-            timingFile << "GT" << "\t" << std::fixed << std::setprecision(3) << gtDuration.count() << std::endl;
+            timingFile << "GT\t" << std::fixed << std::setprecision(3)
+                      << gtDuration.count() << "\t-" << std::endl;
             timingFile.close();
         }
 
@@ -234,309 +238,112 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
         std::cout << "Ground-truth saved. Proceeding with tests." << std::endl;
     }
 
+    /// MAIN RENDER
     int areaLightSamples = m_testMode ? m_currentSamples : 32;
 
-    // if test mode and ground truth not yet, we already returned above - otherwise proceed to render to m_pixels
-    std::chrono::duration<double> renderDuration{};
-    renderSceneIntoBuffer(camera, scene, m_pixels, areaLightSamples, &renderDuration);
-
-    SDL_UpdateTexture(m_texture, nullptr, m_pixels.data(), m_width * sizeof(Uint32));
-
-    // handle test mode operations
-    if (m_testMode) {
-        // save screenshot
-        std::ostringstream filename;
-        filename << "samples_" << std::setw(5) << std::setfill('0')
-                 << areaLightSamples << ".bmp";
-        saveScreenshot(filename.str());
-
-        // save timing data - use folder path
-        std::string timingFilePath = getTestFolderPath() + "/timing_results.txt";
-        std::ofstream timingFile(timingFilePath, std::ios::app);
-        if (timingFile.is_open()) {
-            timingFile << areaLightSamples << "\t"
-                      << std::fixed << std::setprecision(3)
-                      << renderDuration.count() << std::endl;
-            timingFile.close();
-            std::cout << "  Time: " << std::fixed << std::setprecision(3)
-                     << renderDuration.count() << " seconds" << std::endl;
-        }
-
-        // Move to next sample count
-        if (auto it = std::ranges::find(m_sampleCounts, m_currentSamples); it != m_sampleCounts.end() && ++it != m_sampleCounts.end()) {
-            m_currentSamples = *it;
-        } else {
-            m_currentSamples = m_maxSamples + 1; // Mark as complete
-            std::cout << "\n=== Area Light Sampling Test Complete ===" << std::endl;
-            std::cout << "All screenshots saved to: " << m_testFolder << std::endl;
-            std::cout << "Timing data saved to: " << timingFilePath << std::endl;
-
-            // create a summary file
-            createTestSummary();
-        }
-    }
-
-    const RayTracer tracer(&scene);
-    const glm::vec3 cameraPos = camera.getPosition();
-    const auto& lights = scene.getLights();
     if (m_testMode) {
         MeshAreaLight::clearVisibilityCache();
         std::cout << "Rendering with " << areaLightSamples << " samples..." << std::endl;
     }
 
-    const uint32_t tilesX = (m_width + 7) / 8;
-    const uint32_t tilesY = (m_height + 7) / 8;
-    const uint32_t totalTiles = tilesX * tilesY;
-
-    std::vector<uint32_t> tileIndices(totalTiles);
-    for (uint32_t i = 0; i < totalTiles; ++i) {
-        tileIndices[i] = i;
-    }
-
-#if defined(PARALLEL_EXECUTION)
-    std::for_each(std::execution::par, tileIndices.begin(), tileIndices.end(),
-                  [&](uint32_t tileIdx) {
-        RandomGenerator rng;
-#else
-    RandomGenerator rng;
-    for (uint32_t tileIdx : tileIndices) {
-#endif
-        const uint32_t tileX = tileIdx % tilesX;
-        const uint32_t tileY = tileIdx / tilesX;
-        const uint32_t startX = tileX * 8;
-        const uint32_t startY = tileY * 8;
-        const uint32_t endX = std::min(startX + 8, static_cast<uint32_t>(m_width));
-        const uint32_t endY = std::min(startY + 8, static_cast<uint32_t>(m_height));
-
-        for (uint32_t py = startY; py < endY; ++py) {
-            for (uint32_t px = startX; px < endX; ++px) {
-                const float u = (static_cast<float>(px) + 0.5f) / static_cast<float>(m_width);
-                const float v = (static_cast<float>(py) + 0.5f) / static_cast<float>(m_height);
-
-                const Ray ray = camera.generateRay(u, v);
-                const HitResult hit = tracer.intersect(ray);
-
-                glm::vec3 color(0.f);
-
-                if (hit.didHit) {
-                    const unsigned char matId = scene.getGeometryMaterial(hit.geomID);
-                    const Material* mat = scene.getMaterial(matId);
-                    const glm::vec3 viewDir = glm::normalize(cameraPos - hit.origin);
-
-                    if (mat->getType() == MaterialType::Emissive) {
-                        color = dynamic_cast<const Material_Emissive*>(mat)->getEmission();
-                    }
-
-                    // direct lighting from all light sources
-                    for (const auto& pLight : lights) {
-                        if (!pLight->isAreaLight()) {
-                            // point or directional light (unchanged)
-                            glm::vec3 lightDir = pLight->origin - hit.origin;
-                            const float distSq = glm::dot(lightDir, lightDir);
-                            const float dist = std::sqrt(distSq);
-                            lightDir *= (1.0f / dist);
-
-                            const float cosAngle = glm::dot(hit.normal, lightDir);
-                            if (cosAngle <= 0.0f) continue;
-
-                            const Ray shadowRay{hit.origin, lightDir, 0.0001f, dist};
-                            if (tracer.isOccluded(shadowRay)) continue;
-
-                            glm::vec3 radiance;
-                            if (pLight->type == LightType::Point) {
-                                radiance = pLight->color * (pLight->intensity / distSq);
-                            } else {
-                                radiance = pLight->color * pLight->intensity;
-                            }
-
-                            const glm::vec3 brdf = mat->shade(hit.origin, hit.normal, viewDir, lightDir);
-                            color += brdf * radiance * cosAngle;
-                        }
-                        else if (pLight->type == LightType::MeshArea) {
-                            MeshAreaLight* meshLight = pLight->meshAreaLight;
-                            if (!meshLight) continue;
-
-                            // Track contributions separately for each strategy
-                            glm::vec3 lightSamplingContrib(0.0f);
-                            glm::vec3 bsdfSamplingContrib(0.0f);
-
-                            // Strategy 1: Light sampling with MIS
-                            for (int s = 0; s < areaLightSamples; ++s) {
-                                const float u1 = rng.get();
-                                const float u2 = rng.get();
-                                const float u3 = rng.get();
-
-                                const AreaLightSample lightSample = meshLight->sample(hit.origin, u1, u2, u3);
-
-                                if (lightSample.pdf <= 0.0f) continue;
-
-                                glm::vec3 lightDir = lightSample.position - hit.origin;
-                                const float distSq = glm::dot(lightDir, lightDir);
-                                const float dist = std::sqrt(distSq);
-                                lightDir *= (1.0f / dist);
-
-                                const float cosTheta = glm::dot(hit.normal, lightDir);
-                                if (cosTheta <= 0.0f) continue;
-
-                                const float cosTheta_light = glm::dot(lightSample.normal, -lightDir);
-                                if (cosTheta_light <= 0.0f) continue;
-
-                                const Ray shadowRay{hit.origin, lightDir, 0.0001f, dist - 0.0001f};
-                                bool wasVisible = !tracer.isOccluded(shadowRay);
-
-                                if (meshLight->getVisibilitySampler()) {
-                                    int sampledNode = meshLight->getLastSampledNode();
-                                    meshLight->getVisibilitySampler()->recordVisibilitySample(
-                                        hit.origin, sampledNode, wasVisible
-                                    );
-                                }
-
-                                if (!wasVisible) continue;
-
-                                const glm::vec3 brdf = mat->shade(hit.origin, hit.normal, viewDir, lightDir);
-
-                                // geometric term: G(x,y) = V(x,y) * cos_x * cos_y / dist^2
-                                const float geometricTerm = cosTheta_light / distSq;
-
-                                glm::vec3 contribution =
-                                     lightSample.radiance * brdf * cosTheta * geometricTerm;
-
-                                // apply MIS weight correctly - this gives f(x) * w(x) / p(x)
-                                if (lightSample.misWeight > 0.0f && lightSample.pdf > 0.0f) {
-                                    contribution *= lightSample.misWeight / lightSample.pdf;
-                                } else {
-                                    contribution = glm::vec3(0.0f);
-                                }
-
-                                lightSamplingContrib += contribution;
-                            }
-
-                            // Strategy 2: BSDF sampling with MIS (if material supports it)
-                            if (mat->getType() == MaterialType::CookTorrence) {
-                                for (int s = 0; s < areaLightSamples; ++s) {
-                                    const float u1 = rng.get();
-                                    const float u2 = rng.get();
-
-                                    // sample direction according to BRDF
-                                    BSDFSample bsdfSample = BSDFSampler::sampleDiffuse(hit.normal, u1, u2);
-
-                                    if (bsdfSample.pdf <= 0.0f) continue;
-
-                                    // cast ray in sampled direction
-                                    const Ray bsdfRay{hit.origin, bsdfSample.direction, 0.0001f, 1000.0f};
-                                    const HitResult bsdfHit = tracer.intersect(bsdfRay);
-
-                                    // check if we hit the light
-                                    if (bsdfHit.didHit && meshLight->containsPoint(bsdfHit.origin)) {
-                                        const float dist = glm::length(bsdfHit.origin - hit.origin);
-                                        const float distSq = dist * dist;
-
-                                        const float cosTheta = glm::dot(hit.normal, bsdfSample.direction);
-                                        const float cosTheta_light = glm::dot(bsdfHit.normal, -bsdfSample.direction);
-
-                                        if (cosTheta > 0.0f && cosTheta_light > 0.0f) {
-                                            // get light PDF for this point
-                                            const float lightPdf = meshLight->pdf(hit.origin, bsdfHit.origin);
-
-                                            // calculate MIS weight (BSDF sampling strategy)
-                                            float cosLight = glm::dot(bsdfHit.normal, -bsdfSample.direction);
-                                            cosLight = std::max(cosLight, 1e-4f);
-                                            float lightPdfSolidAngle = lightPdf * distSq / cosLight;
-
-                                            // now use same measure for MIS
-                                            const float misWeight = MISWeightCalculator::calculateWeight(
-                                                bsdfSample.pdf,           // solid angle measure
-                                                lightPdfSolidAngle,       // now also in solid angle measure
-                                                MISHeuristic::Balance
-                                            );
-
-                                            const glm::vec3 brdf =
-                                                mat->shade(hit.origin, hit.normal,
-                                                           viewDir, bsdfSample.direction);
-                                            const glm::vec3 radiance = meshLight->getEmissionAt(bsdfHit.origin);
-
-                                            // L = L_emitted * f_r * cos(theta) / pdf
-                                            glm::vec3 contribution = radiance * brdf * cosTheta;
-
-                                            if (misWeight > 0.0f && bsdfSample.pdf > 0.0f) {
-                                                contribution *= misWeight / bsdfSample.pdf;
-                                            }
-                                            bsdfSamplingContrib += contribution;
-                                        }
-                                    }
-                                }
-                            }
-
-                            // average contributions correctly: each strategy already provides an estimate
-                            // averaged over its own samples
-                            if (areaLightSamples > 0) {
-                                lightSamplingContrib /= static_cast<float>(areaLightSamples);
-                                if (mat->getType() == MaterialType::CookTorrence) {
-                                    bsdfSamplingContrib /= static_cast<float>(areaLightSamples);
-                                }
-                            }
-
-                            // combine the two strategies (they are already weighted by MIS)
-                            color += lightSamplingContrib + bsdfSamplingContrib;
-                        }
-                    }
-
-                    color = glm::clamp(color, 0.f, 1.f);
-                }
-
-                const auto r = static_cast<Uint8>(color.r * 255.f);
-                const auto g = static_cast<Uint8>(color.g * 255.f);
-                const auto b = static_cast<Uint8>(color.b * 255.f);
-
-                const uint32_t pixelIndex = py * m_width + px;
-                m_pixels[pixelIndex] = (0xFFu << 24) | (r << 16) | (g << 8) | b;
-            }
-        }
-#if defined(PARALLEL_EXECUTION)
-    });
-#else
-    }
-#endif
-
-    // end timing
-    auto renderEnd = std::chrono::high_resolution_clock::now();
-    renderDuration = renderEnd - renderStart;
+    std::chrono::duration<double> renderDuration{};
+    renderSceneIntoBuffer(camera, scene, m_pixels, areaLightSamples, &renderDuration);
 
     // update texture for display
     SDL_UpdateTexture(m_texture, nullptr, m_pixels.data(), m_width * sizeof(Uint32));
 
-    // handle test mode operations
+    /// TEST MODE: SAVE RESULTS
     if (m_testMode) {
-        // save screenshot
+        // Save screenshot
         std::ostringstream filename;
         filename << "samples_" << std::setw(5) << std::setfill('0')
                  << areaLightSamples << ".bmp";
         saveScreenshot(filename.str());
 
-        // save timing data - use folder path
-        std::string timingFilePath = getTestFolderPath() + "/timing_results.txt";
-        std::ofstream timingFile(timingFilePath, std::ios::app);
-        if (timingFile.is_open()) {
-            timingFile << areaLightSamples << "\t"
-                      << std::fixed << std::setprecision(3)
-                      << renderDuration.count() << std::endl;
-            timingFile.close();
-            std::cout << "  Time: " << std::fixed << std::setprecision(3)
-                     << renderDuration.count() << " seconds" << std::endl;
+        // calculate MSE against ground truth
+        double mse = -1.0;
+        if (m_groundTruthComputed && !m_groundTruthPixels.empty()) {
+            mse = computeMSE(m_groundTruthPixels, m_pixels);
+            std::cout << "  MSE: " << std::scientific << std::setprecision(6) << mse << std::endl;
         }
 
-        // Move to next sample count
-        if (auto it = std::ranges::find(m_sampleCounts, m_currentSamples); it != m_sampleCounts.end() && ++it != m_sampleCounts.end()) {
+        // save timing and MSE data
+        std::string resultsFilePath = getTestFolderPath() + "/results.txt";
+
+        // write header if file doesn't exist
+        bool writeHeader = !std::filesystem::exists(resultsFilePath);
+
+        std::ofstream resultsFile(resultsFilePath, std::ios::app);
+        if (resultsFile.is_open()) {
+            if (writeHeader) {
+                resultsFile << "Strategy\tSamples\tTime(s)\tMSE" << std::endl;
+                resultsFile << "----------------------------------------" << std::endl;
+            }
+
+            resultsFile << m_strategyName << "\t"
+                       << areaLightSamples << "\t"
+                       << std::fixed << std::setprecision(3) << renderDuration.count() << "\t"
+                       << std::scientific << std::setprecision(6) << mse << std::endl;
+            resultsFile.close();
+        }
+
+        std::cout << "  Time: " << std::fixed << std::setprecision(3)
+                 << renderDuration.count() << " seconds" << std::endl;
+
+        // move to next sample count
+        auto it = std::ranges::find(m_sampleCounts, m_currentSamples);
+        if (it != m_sampleCounts.end() && ++it != m_sampleCounts.end()) {
             m_currentSamples = *it;
         } else {
             m_currentSamples = m_maxSamples + 1; // Mark as complete
             std::cout << "\n=== Area Light Sampling Test Complete ===" << std::endl;
             std::cout << "All screenshots saved to: " << m_testFolder << std::endl;
-            std::cout << "Timing data saved to: " << timingFilePath << std::endl;
+            std::cout << "Results saved to: " << resultsFilePath << std::endl;
 
-            // create a summary file
+            // create summary file with MSE analysis
             createTestSummary();
         }
+    }
+}
+
+
+void Renderer::createTestSummary() const {
+    const std::string summaryPath = getTestFolderPath() + "/test_summary.txt";
+
+    if (std::ofstream summary(summaryPath); summary.is_open()) {
+        summary << "=== Area Light Sampling Test Summary ===" << std::endl;
+        summary << "Strategy: " << m_strategyName << std::endl;
+        summary << "Test conducted: " << m_testFolder << std::endl;
+        summary << "Resolution: " << m_width << "x" << m_height << std::endl;
+        summary << "Ground truth samples: " << m_groundTruthSamples << std::endl;
+        summary << "Total tests: " << m_sampleCounts.size() << std::endl;
+        summary << "Sample counts tested: ";
+        for (size_t i = 0; i < m_sampleCounts.size(); ++i) {
+            summary << m_sampleCounts[i];
+            if (i < m_sampleCounts.size() - 1) summary << ", ";
+        }
+        summary << std::endl << std::endl;
+
+        // read and include results
+        std::string resultsPath = getTestFolderPath() + "/results.txt";
+        if (std::filesystem::exists(resultsPath)) {
+            summary << "=== Results ===" << std::endl;
+            std::ifstream resultsFile(resultsPath);
+            std::string line;
+            while (std::getline(resultsFile, line)) {
+                summary << line << std::endl;
+            }
+            summary << std::endl;
+        }
+
+        summary << "=== Analysis Guide ===" << std::endl;
+        summary << "1. Lower MSE = better quality (closer to ground truth)" << std::endl;
+        summary << "2. Compare MSE vs Time for efficiency analysis" << std::endl;
+        summary << "3. Look for diminishing returns at higher sample counts" << std::endl;
+        summary << "4. Compare across strategies at equal sample counts" << std::endl;
+
+        summary.close();
+        std::cout << "Test summary saved to: " << summaryPath << std::endl;
     }
 }
 
@@ -564,7 +371,7 @@ bool Renderer::shouldQuit() {
             m_quit = true;
             std::cout << "Test interrupted by user." << std::endl;
         }
-        // Space bar to pause/resume test
+        // space bar to pause/resume test
         if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_SPACE) {
             m_testMode = !m_testMode;
             std::cout << "Test mode: " << (m_testMode ? "ON" : "OFF") << std::endl;
@@ -644,34 +451,7 @@ std::string Renderer::getTestFolderPath() const {
     return m_testFolder.empty() ? "." : m_testFolder;
 }
 
-void Renderer::createTestSummary() const {
-    const std::string summaryPath = getTestFolderPath() + "/test_summary.txt";
-
-    if (std::ofstream summary(summaryPath); summary.is_open()) {
-        summary << "=== Area Light Sampling Test Summary ===" << std::endl;
-        summary << "Test conducted: " << m_testFolder << std::endl;
-        summary << "Resolution: " << m_width << "x" << m_height << std::endl;
-        summary << "Total tests: " << m_sampleCounts.size() << std::endl;
-        summary << "Sample counts tested: ";
-        for (size_t i = 0; i < m_sampleCounts.size(); ++i) {
-            summary << m_sampleCounts[i];
-            if (i < m_sampleCounts.size() - 1) summary << ", ";
-        }
-        summary << std::endl << std::endl;
-
-        summary << "To analyze the results:" << std::endl;
-        summary << "1. Check timing_results.txt for render times" << std::endl;
-        summary << "2. Compare image quality between sample counts" << std::endl;
-        summary << "3. Look for diminishing returns after certain sample count" << std::endl;
-        summary << "4. The optimal sample count balances quality vs performance" << std::endl;
-
-        summary.close();
-        std::cout << "Test summary saved to: " << summaryPath << std::endl;
-    }
-}
-
-
-/// Compute MSE between reference and test (both ARGB uint32 buffers).
+/// Compute MSE between reference and test
 // converts to linear RGB before computing squared error.
 double Renderer::computeMSE(const std::vector<uint32_t>& reference,
                             const std::vector<uint32_t>& test) const {
@@ -794,7 +574,8 @@ void Renderer::renderSceneIntoBuffer(const Camera& camera, const SceneManager& s
                             MeshAreaLight* meshLight = pLight->meshAreaLight;
                             if (!meshLight) continue;
 
-                            glm::vec3 areaLightContrib(0.0f);
+                            glm::vec3 bsdfSamplingContrib(0.0f);
+                            glm::vec3 lightSamplingContrib(0.0f);
 
                             // Strategy 1: light sampling
                             for (int s = 0; s < areaLightSamples; ++s) {
@@ -802,7 +583,12 @@ void Renderer::renderSceneIntoBuffer(const Camera& camera, const SceneManager& s
                                 const float u2 = rng.get();
                                 const float u3 = rng.get();
 
-                                const AreaLightSample lightSample = meshLight->sample(hit.origin, u1, u2, u3);
+                                const AreaLightSample lightSample = meshLight->sample(
+                                    hit.origin,
+                                    hit.normal,
+                                    u1, u2, u3
+                                );
+
 
                                 if (lightSample.pdf <= 0.0f) continue;
 
@@ -830,25 +616,35 @@ void Renderer::renderSceneIntoBuffer(const Camera& camera, const SceneManager& s
                                 if (!wasVisible) continue;
 
                                 const glm::vec3 brdf = mat->shade(hit.origin, hit.normal, viewDir, lightDir);
-                                const float geometricTerm = cosTheta_light / distSq;
 
-                                glm::vec3 contribution =
-                                     lightSample.radiance * brdf * cosTheta * geometricTerm;
+                                // compute geometric term: G(x,y) = cos(θ_x) * cos(θ_y) / r^2
+                                const float geometricTerm = (cosTheta * cosTheta_light) / distSq;
 
-                                if (lightSample.misWeight > 0.0f && lightSample.pdf > 0.0f) {
-                                    contribution *= lightSample.misWeight / lightSample.pdf;
-                                } else {
-                                    contribution = glm::vec3(0.0f);
+                                // base contribution (works for ALL sampling strategies)
+                                glm::vec3 contribution = lightSample.radiance * brdf * geometricTerm;
+
+                                // compute MIS weight if BSDF sampling is enabled
+                                float misWeight = 1.0f;
+                                if (mat->getType() == MaterialType::CookTorrence) {
+                                    float lightPdfSolidAngle = lightSample.pdf * distSq / cosTheta_light;
+                                    float bsdfPdf = BSDFSampler::pdfDiffuse(hit.normal, lightDir);
+
+                                    misWeight = MISWeightCalculator::calculateWeight(
+                                        lightPdfSolidAngle, bsdfPdf, MISHeuristic::Balance);
                                 }
 
-                                areaLightContrib += contribution;
+                                // apply MIS weight and divide by PDF
+                                contribution *= misWeight / lightSample.pdf;
+
+                                lightSamplingContrib += contribution;
                             }
 
                             // Strategy 2: BSDF sampling (if supported)
-                            if (mat->getType() == MaterialType::CookTorrence || mat->getType() == MaterialType::LambertPhong) {
+                            if (mat->getType() == MaterialType::CookTorrence) {
                                 for (int s = 0; s < areaLightSamples; ++s) {
                                     const float u1 = rng.get();
                                     const float u2 = rng.get();
+
                                     BSDFSample bsdfSample = BSDFSampler::sampleDiffuse(hit.normal, u1, u2);
                                     if (bsdfSample.pdf <= 0.0f) continue;
 
@@ -858,38 +654,52 @@ void Renderer::renderSceneIntoBuffer(const Camera& camera, const SceneManager& s
                                     if (bsdfHit.didHit && meshLight->containsPoint(bsdfHit.origin)) {
                                         const float dist = glm::length(bsdfHit.origin - hit.origin);
                                         const float distSq = dist * dist;
+
                                         const float cosTheta = glm::dot(hit.normal, bsdfSample.direction);
                                         const float cosTheta_light = glm::dot(bsdfHit.normal, -bsdfSample.direction);
 
                                         if (cosTheta > 0.0f && cosTheta_light > 0.0f) {
-                                            const float lightPdf = meshLight->pdf(hit.origin, bsdfHit.origin);
-                                            float cosLight = glm::dot(bsdfHit.normal, -bsdfSample.direction);
-                                            cosLight = std::max(cosLight, 1e-4f);
-                                            float lightPdfSolidAngle = lightPdf * distSq / cosLight;
+                                            // get light PDF for this point (in area measure)
+                                            const float lightPdfArea = meshLight->pdf(hit.origin, bsdfHit.origin);
 
+                                            // pdf_solidAngle = pdf_area * cos(theta_light) / distance^2
+                                            float lightPdfSolidAngle = lightPdfArea * cosTheta_light / distSq;
+
+                                            // both PDFs now in solid angle measure
                                             const float misWeight = MISWeightCalculator::calculateWeight(
-                                                bsdfSample.pdf, lightPdfSolidAngle, MISHeuristic::Balance
+                                                bsdfSample.pdf,        // solid angle (cosine-weighted)
+                                                lightPdfSolidAngle,    // solid angle
+                                                MISHeuristic::Balance
                                             );
 
-                                            const glm::vec3 brdf = mat->shade(hit.origin, hit.normal, viewDir, bsdfSample.direction);
+                                            const glm::vec3 brdf = mat->shade(hit.origin, hit.normal,
+                                                                             viewDir, bsdfSample.direction);
                                             const glm::vec3 radiance = meshLight->getEmissionAt(bsdfHit.origin);
 
+                                            // L = L_e * f_r * cos(theta) / pdf
                                             glm::vec3 contribution = radiance * brdf * cosTheta;
+
                                             if (misWeight > 0.0f && bsdfSample.pdf > 0.0f) {
                                                 contribution *= misWeight / bsdfSample.pdf;
                                             }
-                                            areaLightContrib += contribution;
+
+                                            bsdfSamplingContrib += contribution;
                                         }
                                     }
                                 }
                             }
 
-                            const int totalSamples = (mat->getType() == MaterialType::CookTorrence ||
-                                                      mat->getType() == MaterialType::LambertPhong)
-                                                    ? areaLightSamples * 2
-                                                    : areaLightSamples;
+                            // average contributions correctly: each strategy already provides an estimate
+                            // averaged over its own samples
+                            if (areaLightSamples > 0) {
+                                lightSamplingContrib /= static_cast<float>(areaLightSamples);
+                                if (mat->getType() == MaterialType::CookTorrence) {
+                                    bsdfSamplingContrib /= static_cast<float>(areaLightSamples);
+                                }
+                            }
 
-                            color += areaLightContrib / static_cast<float>(totalSamples);
+                            // combine the two strategies (they are already weighted by MIS)
+                            color += lightSamplingContrib + bsdfSamplingContrib;
                         }
                     }
 
@@ -936,7 +746,7 @@ bool Renderer::loadRawBuffer(std::vector<uint32_t>& pixels,
     in.read((char*)&w, sizeof(uint32_t));
     in.read((char*)&h, sizeof(uint32_t));
 
-    if (w != m_width || h != m_height) return false;
+    if (static_cast<int>(w) != m_width || static_cast<int>(h) != m_height) return false;
 
     pixels.resize(w * h);
     in.read((char*)pixels.data(), pixels.size() * sizeof(uint32_t));
@@ -965,11 +775,11 @@ void Renderer::generateGroundTruth(const Camera& camera, SceneManager& scene,
         default: std::cout << "Unknown\n"; break;
     }
 
-    // Save current strategy to restore later
+    // save current strategy to restore later
     SamplingStrategy oldStrategy = m_currentStrategy;
 
-    // Force strategy on all area lights for GT
-    setAreaLightStrategy(const_cast<SceneManager&>(scene), samplerStrategy);
+    // force strategy on all area lights for GT
+    setAreaLightStrategy(scene, samplerStrategy);
 
     // render GT into local buffer
     std::chrono::duration<double> gtDuration;
@@ -993,7 +803,7 @@ void Renderer::generateGroundTruth(const Camera& camera, SceneManager& scene,
     std::cout << "Ground truth saved to: " << outDir << " (render time " << gtDuration.count() << " s)\n";
 
     // restore previous sampling strategy
-    setAreaLightStrategy(const_cast<SceneManager&>(scene), oldStrategy);
+    setAreaLightStrategy(scene, oldStrategy);
 }
 
 

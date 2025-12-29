@@ -49,7 +49,7 @@ AreaLightSample AreaImportanceTriangleSampler::sample(
         return {position, m_normal, 0.0f, 1.0f, glm::vec3(0), m_area};
     }
 
-    const float pdfArea = pdfSolidAngle * (cosTheta / (t * t));
+    const float pdfArea = pdfSolidAngle * cosTheta / (t * t);
 
     if (!std::isfinite(pdfArea) || pdfArea <= 0.0f) {
         return {position, m_normal, 0.0f, 1.0f, glm::vec3(0), m_area};

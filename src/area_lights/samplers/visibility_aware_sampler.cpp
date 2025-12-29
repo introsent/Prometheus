@@ -102,7 +102,6 @@ VisibilityAwareHierarchicalSampler::sampleLight(const glm::vec3& shadingPoint,
     // 5. calculate MIS weight if enabled
     float misWeight = 1.0f;
     if (m_config.enableMIS) {
-        // calculate BSDF sampling PDF for this direction
         glm::vec3 lightDir = glm::normalize(triangleSample.position - shadingPoint);
         float bsdfPdf = BSDFSampler::pdfDiffuse(normal, lightDir);
 
@@ -111,12 +110,11 @@ VisibilityAwareHierarchicalSampler::sampleLight(const glm::vec3& shadingPoint,
         float cosLight = glm::dot(triangleSample.normal, -lightDir);
         cosLight = std::max(cosLight, 1e-4f);
 
-        // convert light PDF to solid angle measure
-        float lightPdfSolidAngle = lightSamplingPdf * distanceSq / cosLight;
+        float lightPdfSolidAngle = lightSamplingPdf * cosLight / distanceSq;
 
         misWeight = MISWeightCalculator::calculateWeight(
-            lightPdfSolidAngle,  // in solid angle measure
-            bsdfPdf,             // in solid angle measure
+            lightPdfSolidAngle,
+            bsdfPdf,
             m_config.misHeuristic
         );
     }

@@ -351,11 +351,6 @@ void createSceneC(SceneManager* pScene)
     pScene->addPlane({5.f, 0.f, 0.f}, {-1.f, 0.f, 0.f}, matLambert_GrayBlue);    // RIGHT
     pScene->addPlane({-5.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, matLambert_GrayBlue);    // LEFT
 
-
-
-    const unsigned char matLambert_White = pScene->addMaterial(
-        new Material_Lambert(colors::white, 1.f));
-
     // bottom row spheres (metals with varying roughness)
     pScene->addSphere({-1.75f, 4.f, 6.f}, 0.75f, matCT_GrayRoughMetal);
     pScene->addSphere({0.f, 4.f, 6.f}, 0.75f, matCT_GrayMediumMetal);
@@ -397,7 +392,7 @@ void createSceneC(SceneManager* pScene)
 
         // define emission properties
         glm::vec3 emission(1.0f, 1.0f, 1.0f);
-        float intensity = 20.f;  // high intensity since bunny is the only light source
+        float intensity = 5.f;  // high intensity since bunny is the only light source
 
         // add bunny as a MESH AREA LIGHT
         pScene->addMeshAreaLight(
@@ -511,9 +506,6 @@ void createSceneD_FluxStressTest(SceneManager* pScene)
 
     const unsigned char matCT_Shiny = pScene->addMaterial(
         new Material_CookTorrence(glm::vec3(0.9f, 0.9f, 0.9f), 0.0f, 0.2f));
-
-    const unsigned char matCT_Rough = pScene->addMaterial(
-        new Material_CookTorrence(glm::vec3(0.7f, 0.7f, 0.7f), 0.0f, 0.8f));
 
     // --- Room (same as SceneC) ---
     pScene->addPlane({0.f, 0.f, 10.f}, {0.f, 0.f, -1.f}, matLambert_Gray);   // BACK
@@ -689,7 +681,7 @@ int main(int argc, char* argv[])
     bool genGroundTruth = false;
 
     bool testMode = false;
-    std::string strategyStr = "vis";
+    std::string strategyStr = "uniform";
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -738,7 +730,7 @@ int main(int argc, char* argv[])
         static_cast<float>(WIDTH) / static_cast<float>(HEIGHT)
     );
 
-    createSceneC(pScene.get());
+    createSceneD_FluxStressTest(pScene.get());
     pScene->commit();
     setupScene(*pScene);
 

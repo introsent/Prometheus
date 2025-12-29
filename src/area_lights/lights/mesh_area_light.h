@@ -34,6 +34,10 @@ public:
     [[nodiscard]] AreaLightSample sample(
         const glm::vec3& shadingPoint,
         float u1, float u2, float u3) const;
+    [[nodiscard]] AreaLightSample sample(const glm::vec3& shadingPoint,
+                          const glm::vec3& surfaceNormal,
+                          float u1, float u2, float u3) const;
+
 
     // pdf evaluation (dispatches to current strategy)
     [[nodiscard]] float pdf(
@@ -56,6 +60,10 @@ public:
     [[nodiscard]] AreaLightSample sampleVisibilityAware(
         const glm::vec3& shadingPoint,
         float u1, float u2, float u3) const;
+    [[nodiscard]] AreaLightSample sampleVisibilityAware(const glm::vec3& shadingPoint,
+                                         const glm::vec3& surfaceNormal,
+                                         float u1, float u2, float u3) const;
+
 
     // pdf methods
     [[nodiscard]] float pdfUniform(

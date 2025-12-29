@@ -140,6 +140,26 @@ AreaLightSample MeshAreaLight::sample(
     }
 }
 
+AreaLightSample MeshAreaLight::sample(const glm::vec3 &shadingPoint, const glm::vec3 &surfaceNormal, float u1, float u2,
+    float u3) const {
+    switch (m_strategy) {
+        case SamplingStrategy::Uniform:
+            return sampleUniform(shadingPoint, u1, u2, u3);
+
+        case SamplingStrategy::AreaImportance:
+            return sampleAreaImportance(shadingPoint, u1, u2, u3);
+
+        case SamplingStrategy::HierarchicalFlux:
+            return sampleHierarchicalFlux(shadingPoint, u1, u2, u3);
+
+        case SamplingStrategy::VisibilityAwareHierarchical:
+            return sampleVisibilityAware(shadingPoint, surfaceNormal, u1, u2, u3);
+
+        default:
+            return sampleUniform(shadingPoint, u1, u2, u3);
+    }
+}
+
 float MeshAreaLight::pdf(
     const glm::vec3& shadingPoint,
     const glm::vec3& lightPoint) const {
@@ -404,6 +424,26 @@ AreaLightSample MeshAreaLight::sampleVisibilityAware(
         sample.radiance,
         m_totalArea
     };
+}
+
+AreaLightSample MeshAreaLight::sampleVisibilityAware(const glm::vec3 &shadingPoint, const glm::vec3 &surfaceNormal,
+    float u1, float u2, float u3) const {
+    if (!m_visAwareSampler) {
+        return sampleHierarchicalFlux(shadingPoint, u1, u2, u3);
+    }
+
+    auto sample = m_visAwareSampler->sampleLight(
+        shadingPoint, surfaceNormal, u1, u2, u3);
+
+    return AreaLightSample{
+        sample.position,
+        sample.normal,
+        sample.pdf,
+        sample.misWeight,
+        sample.radiance,
+        m_totalArea
+    };
+
 }
 
 
