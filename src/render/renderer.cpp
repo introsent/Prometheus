@@ -148,7 +148,7 @@ void Renderer::saveScreenshot(const std::vector<uint32_t>& pixels, const std::st
 
 
 bool Renderer::initialize() {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::cerr << "SDL initialization failed: " << SDL_GetError() << std::endl;
         return false;
     }

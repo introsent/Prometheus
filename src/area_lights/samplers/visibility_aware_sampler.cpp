@@ -147,10 +147,6 @@ int VisibilityAwareHierarchicalSampler::selectBVHNodeWithVisibility(
         return nodeIndex;
     }
 
-    // get children
-    const auto& left = m_light->m_bvhNodes[node.leftChild];
-    const auto& right = m_light->m_bvhNodes[node.rightChild];
-
     // calculate importance for each child
     const float importanceLeft = calculateNodeImportance(node.leftChild, shadingPoint);
     const float importanceRight = calculateNodeImportance(node.rightChild, shadingPoint);
