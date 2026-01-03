@@ -6,23 +6,25 @@
 #define PROMETHEUS_TRIANGLE_BUILD_INFO_H
 #include <glm/vec3.hpp>
 
-/// Triangle information for BVH construction
 struct TriangleBuildInfo {
-    glm::vec3 centroid;      // triangle centroid for spatial partitioning
-    glm::vec3 bboxMin;       // triangle bounding box
+    glm::vec3 centroid;
+    glm::vec3 bboxMin;
     glm::vec3 bboxMax;
-    float flux;              // emitted flux
-    float area;              // surface area
-    int originalIndex;       // index in original triangle array
+    glm::vec3 normal;
+    float flux;
+    float area;
+    int originalIndex;
 
     TriangleBuildInfo(
         const glm::vec3& cent,
         const glm::vec3& min,
         const glm::vec3& max,
+        const glm::vec3& norm,  // NEW
         float f, float a, int idx)
         : centroid(cent)
         , bboxMin(min)
         , bboxMax(max)
+        , normal(norm)
         , flux(f)
         , area(a)
         , originalIndex(idx)

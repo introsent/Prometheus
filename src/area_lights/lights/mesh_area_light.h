@@ -121,6 +121,7 @@ private:
         glm::vec3 normal;
         float area;
         float intensity;
+        OrientationCone orientationCone;
         std::unique_ptr<UniformTriangleSampler> uniformSampler;
         std::unique_ptr<AreaImportanceTriangleSampler> areaImportanceSampler;
     };

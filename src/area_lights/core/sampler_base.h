@@ -6,6 +6,7 @@
 #define PROMETHEUS_SAMPLER_BASE_H
 
 #include <glm/glm.hpp>
+#include <vector>
 
 /// Area light sample structure
 // contains all information about a sampled point on an area light
@@ -16,6 +17,7 @@ struct AreaLightSample {
     float misWeight;        // multiple importance sampling weight (1.0 if not using MIS)
     glm::vec3 radiance;     // emitted radiance (emission * intensity)
     float area;             // total area of the light source
+    std::vector<int> traversalPath; // for visibility-aware sampling
 };
 
 

@@ -63,6 +63,11 @@ public:
                              SamplingStrategy samplerStrategy, int samples,
                              const std::string& outDir);
 
+
+    void setSceneName(const std::string& sceneName) {
+        m_sceneName = sceneName;
+    }
+
 private:
     int m_width;
     int m_height;
@@ -77,6 +82,7 @@ private:
 
     // test mode flag
     bool m_testMode;
+    std::string m_sceneName;
 
     int m_currentSamples;
     int m_maxSamples;
@@ -96,6 +102,6 @@ private:
     std::string m_groundTruthImage = "gt.bmp";
     std::string m_groundTruthRaw = "gt.bin";
     bool m_groundTruthComputed = false;
-    int m_groundTruthSamples = 8192;
+    int m_groundTruthSamples = 20000;
 };
 #endif //RENDERER_H

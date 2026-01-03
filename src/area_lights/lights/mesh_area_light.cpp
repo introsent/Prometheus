@@ -49,12 +49,10 @@ void MeshAreaLight::extractTrianglesFromMesh() {
     m_triangles.reserve(numTriangles);
 
     for (size_t i = 0; i < indices.size(); i += 3) {
-        // get vertex indices
         const uint32_t idx0 = indices[i];
         const uint32_t idx1 = indices[i + 1];
         const uint32_t idx2 = indices[i + 2];
 
-        // extract positions
         const glm::vec3 v0(vertices[idx0].position.x,
                           vertices[idx0].position.y,
                           vertices[idx0].position.z);
@@ -65,20 +63,17 @@ void MeshAreaLight::extractTrianglesFromMesh() {
                           vertices[idx2].position.y,
                           vertices[idx2].position.z);
 
-        // compute triangle properties
         const glm::vec3 edge1 = v1 - v0;
         const glm::vec3 edge2 = v2 - v0;
         const glm::vec3 crossProd = glm::cross(edge1, edge2);
         const float area = 0.5f * glm::length(crossProd);
 
-        // skip degenerate triangles
         if (area <= 1e-8f) {
             continue;
         }
 
         const glm::vec3 normal = glm::normalize(crossProd);
 
-        // create triangle data
         TriangleData tri;
         tri.v0 = v0;
         tri.v1 = v1;
@@ -87,7 +82,9 @@ void MeshAreaLight::extractTrianglesFromMesh() {
         tri.area = area;
         tri.intensity = m_intensity;
 
-        // create samplers
+        // NEW: Initialize orientation cone for this triangle (flat diffuse emitter)
+        tri.orientationCone = OrientationCone(normal, static_cast<float>(M_PI) / 2.0f);
+
         tri.uniformSampler = std::make_unique<UniformTriangleSampler>(
             v0, v1, v2, normal, area, m_emission, m_intensity);
 
@@ -328,7 +325,7 @@ float MeshAreaLight::pdfAreaImportance(
 
 
 /// Hierarchical flux sampling
-// use BVH to select lights proportional to flux/distance²
+// use BVH to select lights proportional to flux/distance^2
 AreaLightSample MeshAreaLight::sampleHierarchicalFlux(
     const glm::vec3& shadingPoint,
     float u1, float u2, float u3) const {
@@ -435,14 +432,16 @@ AreaLightSample MeshAreaLight::sampleVisibilityAware(const glm::vec3 &shadingPoi
     auto sample = m_visAwareSampler->sampleLight(
         shadingPoint, surfaceNormal, u1, u2, u3);
 
-    return AreaLightSample{
-        sample.position,
-        sample.normal,
-        sample.pdf,
-        sample.misWeight,
-        sample.radiance,
-        m_totalArea
-    };
+    AreaLightSample result;
+    result.position = sample.position;
+    result.normal = sample.normal;
+    result.pdf = sample.pdf;
+    result.misWeight = sample.misWeight;
+    result.radiance = sample.radiance;
+    result.area = m_totalArea;
+    result.traversalPath = std::move(sample.traversalPath);  // move path to result
+
+    return result;
 
 }
 
@@ -453,7 +452,6 @@ void MeshAreaLight::buildBVH() {
         return;
     }
 
-    // prepare triangle build info
     std::vector<TriangleBuildInfo> buildInfo;
     buildInfo.reserve(m_triangles.size());
 
@@ -470,17 +468,24 @@ void MeshAreaLight::buildBVH() {
         float flux = MathHelpers::computeTriangleFlux(
             m_emission, tri.intensity, tri.area);
 
-        buildInfo.emplace_back(centroid, bboxMin, bboxMax, flux, tri.area, i);
+        buildInfo.emplace_back(
+            centroid,
+            bboxMin,
+            bboxMax,
+            tri.normal,  // pass the triangle normal
+            flux,
+            tri.area,
+            static_cast<int>(i)
+        );
     }
 
-    // build BVH
     BVHBuilder builder;
     m_rootNodeIndex = builder.build(m_bvhNodes, buildInfo);
 
-    // calculate flux for leaf nodes
+    // Note: calculateLeafFlux() is now partially handled by BVH builder
+    // call it to ensure orientation bounds are set for leaves
     calculateLeafFlux();
 
-    // build mapping from triangles to leaf nodes
     buildTriangleToNodeMapping();
 
     std::cout << "BVH built with " << m_bvhNodes.size() << " nodes\n";
@@ -490,12 +495,43 @@ void MeshAreaLight::calculateLeafFlux() {
     for (auto& node : m_bvhNodes) {
         if (node.isLeaf) {
             node.totalFlux = 0.0f;
+            node.totalArea = 0.0f;
+            node.fluxVariance = 0.0f;
+
+            std::vector<float> fluxValues;
+            fluxValues.reserve(node.triangleIndices.size());
+
+            bool firstTriangle = true;
+
             for (int triIdx : node.triangleIndices) {
                 if (triIdx < static_cast<int>(m_triangles.size())) {
                     const auto& tri = m_triangles[triIdx];
-                    node.totalFlux += MathHelpers::computeTriangleFlux(
+                    float flux = MathHelpers::computeTriangleFlux(
                         m_emission, tri.intensity, tri.area);
+
+                    node.totalFlux += flux;
+                    node.totalArea += tri.area;
+                    fluxValues.push_back(flux);
+
+                    // merge orientation cones from triangles
+                    if (firstTriangle) {
+                        node.orientationBounds = tri.orientationCone;
+                        firstTriangle = false;
+                    } else {
+                        node.orientationBounds = mergeOrientationCones(
+                            node.orientationBounds, tri.orientationCone);
+                    }
                 }
+            }
+
+            // calculate flux variance for adaptive splitting
+            if (!fluxValues.empty()) {
+                float meanFlux = node.totalFlux / static_cast<float>(fluxValues.size());
+                for (float f : fluxValues) {
+                    float diff = f - meanFlux;
+                    node.fluxVariance += diff * diff;
+                }
+                node.fluxVariance /= static_cast<float>(fluxValues.size());
             }
         }
     }
@@ -567,7 +603,7 @@ int MeshAreaLight::selectBVHLeafNode(
         const BVHNode& left = m_bvhNodes[node.leftChild];
         const BVHNode& right = m_bvhNodes[node.rightChild];
 
-        // calculate importance: flux / distance²
+        // calculate importance: flux / distance^2
         const glm::vec3 toLeft = left.getCentroid() - shadingPoint;
         float distSqLeft = glm::dot(toLeft, toLeft);
         distSqLeft = std::max(distSqLeft, 1e-4f);
@@ -797,26 +833,28 @@ void MeshAreaLight::setSamplingStrategy(SamplingStrategy strategy) {
 
     m_strategy = strategy;
 
-    // build BVH if needed for hierarchical strategies
     if ((strategy == SamplingStrategy::HierarchicalFlux ||
          strategy == SamplingStrategy::VisibilityAwareHierarchical) &&
         m_bvhNodes.empty()) {
         buildBVH();
-    }
+        }
 
-    // initialize visibility-aware sampler if needed
     if (strategy == SamplingStrategy::VisibilityAwareHierarchical &&
         s_visibilityCache && !m_visAwareSampler) {
 
         VisibilityAwareHierarchicalSampler::Configuration config;
         config.enableVisibilityLearning = true;
+        config.enableAdaptiveSplitting = false;  // enable adaptive splitting
         config.enableMIS = true;
-        config.visibilityWeight = 0.5f;
+        config.visibilityWeight = 0.7f;
+        config.splitThreshold = 0.02f;          // variance threshold
+        config.minSamplesForLearning = 8;       // reduced threshold
+        config.maxSplitDepth = 4;               // limit split recursion
         config.misHeuristic = MISHeuristic::Balance;
 
         m_visAwareSampler = std::make_unique<VisibilityAwareHierarchicalSampler>(
             this, s_visibilityCache.get(), config);
-    }
+        }
 }
 
 void MeshAreaLight::setTriangleIntensity(size_t triangleIndex, float intensity) {

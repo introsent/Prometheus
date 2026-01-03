@@ -3,13 +3,12 @@
 //
 
 #include "visibility_aware_sampler.h"
-
-#include <iostream>
-#include <ostream>
-
-#include "area_importance_triangle_sampler.h"
-#include "mis/bsdf_sampler.h"
+#include "lights/mesh_area_light.h"
 #include "visibility/spatial_visibility_cache.h"
+#include "samplers/area_importance_triangle_sampler.h"
+#include "mis/bsdf_sampler.h"
+#include <cmath>
+#include <algorithm>
 
 VisibilityAwareHierarchicalSampler::VisibilityAwareHierarchicalSampler(
     MeshAreaLight* light,
@@ -22,28 +21,75 @@ VisibilityAwareHierarchicalSampler::VisibilityAwareHierarchicalSampler(
 }
 
 VisibilityAwareHierarchicalSampler::Sample
-VisibilityAwareHierarchicalSampler::sampleLight(const glm::vec3& shadingPoint,
-                                               const glm::vec3& normal,
-                                               float u1, float u2, float u3) const {
+VisibilityAwareHierarchicalSampler::sampleLight(
+    const glm::vec3& shadingPoint,
+    const glm::vec3& shadingNormal,
+    float u1, float u2, float u3) const {
+
     Sample result{};
     result.isValid = false;
-    result.misWeight = 1.0f;
 
-    // get root node
-    if (m_light->m_rootNodeIndex < 0 ||
-        m_light->m_bvhNodes.empty()) {
+    if (m_light->m_rootNodeIndex < 0 || m_light->m_bvhNodes.empty()) {
         return result;
     }
 
-    // 1. select leaf node using visibility-aware hierarchical sampling
-    float pathPdf = 1.0f;
-    int leafNodeIndex = selectBVHNodeWithVisibility(
+    // Use local traversal path (thread-safe)
+    std::vector<int> traversalPath;
+    traversalPath.reserve(32);  // Pre-allocate to reduce allocations
+
+    // Traverse with adaptive splitting
+    TraversalResult traversal = traverseWithAdaptiveSplitting(
         m_light->m_rootNodeIndex,
         shadingPoint,
+        shadingNormal,
         u1,
-        pathPdf
+        0,
+        traversalPath
     );
-    if (leafNodeIndex < 0) {
+
+    if (traversal.leafNodeIndex < 0 && traversal.sampledLeaves.empty()) {
+        return result;
+    }
+
+    // Handle single leaf case (no splitting occurred)
+    int leafNodeIndex;
+    float pathPdf;
+
+    if (!traversal.sampledLeaves.empty()) {
+        // Multiple leaves from splitting
+        float totalWeight = 0.0f;
+        for (const auto& [idx, weight] : traversal.sampledLeaves) {
+            totalWeight += weight;
+        }
+
+        if (totalWeight <= 0.0f) {
+            return result;
+        }
+
+        float target = u2 * totalWeight;
+        float cumulative = 0.0f;
+        leafNodeIndex = traversal.sampledLeaves[0].first;
+
+        float selectedWeight = traversal.sampledLeaves[0].second;
+
+        for (const auto& [idx, weight] : traversal.sampledLeaves) {
+            cumulative += weight;
+            if (target <= cumulative) {
+                leafNodeIndex = idx;
+                selectedWeight = weight;
+                break;
+            }
+        }
+
+        // PDF for selecting this specific leaf from the split
+        pathPdf = selectedWeight / totalWeight;
+
+    } else {
+        leafNodeIndex = traversal.leafNodeIndex;
+        pathPdf = traversal.pathPdf;
+    }
+
+    if (leafNodeIndex < 0 || leafNodeIndex >= static_cast<int>(m_light->m_bvhNodes.size())) {
         return result;
     }
 
@@ -54,11 +100,15 @@ VisibilityAwareHierarchicalSampler::sampleLight(const glm::vec3& shadingPoint,
 
     m_light->setLastSampledNode(leafNodeIndex);
 
-    // 2. select triangle within leaf (weighted by flux)
+    // Select triangle within leaf (weighted by flux)
     float fluxSum = 0.0f;
     std::vector<float> triangleFluxes;
+    triangleFluxes.reserve(leaf.triangleIndices.size());
 
     for (int triIdx : leaf.triangleIndices) {
+        if (triIdx < 0 || triIdx >= static_cast<int>(m_light->m_triangles.size())) {
+            continue;
+        }
         const auto& tri = m_light->m_triangles[triIdx];
         float flux = tri.intensity * tri.area *
                     ((m_light->m_emission.r + m_light->m_emission.g + m_light->m_emission.b) / 3.0f);
@@ -66,57 +116,71 @@ VisibilityAwareHierarchicalSampler::sampleLight(const glm::vec3& shadingPoint,
         fluxSum += flux;
     }
 
-    if (fluxSum <= 0.0f) {
+    if (fluxSum <= 0.0f || triangleFluxes.empty()) {
         return result;
     }
 
-    // select triangle
-    float target = u2 * fluxSum;
+    // Select triangle
+    float adjustedU2 = traversal.sampledLeaves.empty() ? u2 : std::fmod(u2 * 7.13f, 1.0f);
+    float target = adjustedU2 * fluxSum;
     float cumulative = 0.0f;
-    int selectedIdx = 0;
+    size_t selectedIdx = 0;
 
-    for (size_t i = 0; i < leaf.triangleIndices.size(); ++i) {
+    for (size_t i = 0; i < triangleFluxes.size(); ++i) {
         cumulative += triangleFluxes[i];
         if (target <= cumulative) {
-            selectedIdx = static_cast<int>(i);
+            selectedIdx = i;
             break;
         }
     }
 
+    if (selectedIdx >= leaf.triangleIndices.size()) {
+        return result;
+    }
+
     int triangleIndex = leaf.triangleIndices[selectedIdx];
+    if (triangleIndex < 0 || triangleIndex >= static_cast<int>(m_light->m_triangles.size())) {
+        return result;
+    }
+
     const auto& triangle = m_light->m_triangles[triangleIndex];
 
-    // 3. sample point on triangle
+    // Sample point on triangle
     auto triangleSample = triangle.areaImportanceSampler->sample(
-        shadingPoint, u3, std::fmod(u1 + u2, 1.0f)
+        shadingPoint, u3, std::fmod(u1 + u2 + u3, 1.0f)
     );
 
     if (triangleSample.pdf <= 0.0f) {
         return result;
     }
 
-    // 4. calculate combined PDF
+    // Calculate combined PDF
     float triangleSelectionProb = triangleFluxes[selectedIdx] / fluxSum;
     float lightSamplingPdf = pathPdf * triangleSelectionProb * triangleSample.pdf;
 
-    // 5. calculate MIS weight if enabled
+    if (lightSamplingPdf <= 0.0f) {
+        return result;
+    }
+
+    // Calculate MIS weight
     float misWeight = 1.0f;
     if (m_config.enableMIS) {
-        glm::vec3 lightDir = glm::normalize(triangleSample.position - shadingPoint);
-        float bsdfPdf = BSDFSampler::pdfDiffuse(normal, lightDir);
+        glm::vec3 toLight = triangleSample.position - shadingPoint;
+        float distanceSq = glm::dot(toLight, toLight);
 
-        float distanceSq = glm::dot(triangleSample.position - shadingPoint,
-                                  triangleSample.position - shadingPoint);
-        float cosLight = glm::dot(triangleSample.normal, -lightDir);
-        cosLight = std::max(cosLight, 1e-4f);
+        if (distanceSq > 1e-8f) {
+            glm::vec3 lightDir = toLight / std::sqrt(distanceSq);
+            float bsdfPdf = BSDFSampler::pdfDiffuse(shadingNormal, lightDir);
 
-        float lightPdfSolidAngle = lightSamplingPdf * cosLight / distanceSq;
+            float cosLight = std::max(glm::dot(triangleSample.normal, -lightDir), 1e-4f);
+            float lightPdfSolidAngle = lightSamplingPdf * distanceSq / cosLight;
 
-        misWeight = MISWeightCalculator::calculateWeight(
-            lightPdfSolidAngle,
-            bsdfPdf,
-            m_config.misHeuristic
-        );
+            misWeight = MISWeightCalculator::calculateWeight(
+                lightPdfSolidAngle,
+                bsdfPdf,
+                m_config.misHeuristic
+            );
+        }
     }
 
     // Fill result
@@ -127,51 +191,128 @@ VisibilityAwareHierarchicalSampler::sampleLight(const glm::vec3& shadingPoint,
     result.misWeight = misWeight;
     result.isValid = true;
 
+    // Store traversal path in result for later visibility recording
+    result.traversalPath = std::move(traversalPath);
+
     return result;
 }
 
-int VisibilityAwareHierarchicalSampler::selectBVHNodeWithVisibility(
+float VisibilityAwareHierarchicalSampler::calculateNodeImportance(
     int nodeIndex,
     const glm::vec3& shadingPoint,
-    float u,
-    float& outPdf) const {
+    const glm::vec3& shadingNormal) const {
 
     if (nodeIndex < 0 || nodeIndex >= static_cast<int>(m_light->m_bvhNodes.size())) {
-        return -1;
+        return 0.0f;
     }
 
     const auto& node = m_light->m_bvhNodes[nodeIndex];
 
-    // base case: leaf node
-    if (node.isLeaf) {
-        return nodeIndex;
+    // Vector from shading point to cluster center
+    glm::vec3 toNode = node.getCentroid() - shadingPoint;
+    float dist = glm::length(toNode);
+    float distSq = std::max(dist * dist, 1e-4f);
+
+    // Clamp distance to half bounding sphere radius when inside/near cluster
+    float boundingRadius = node.getBoundingSphereRadius();
+    if (dist < boundingRadius) {
+        dist = std::max(dist, boundingRadius * 0.5f);
+        distSq = dist * dist;
     }
 
-    // calculate importance for each child
-    const float importanceLeft = calculateNodeImportance(node.leftChild, shadingPoint);
-    const float importanceRight = calculateNodeImportance(node.rightChild, shadingPoint);
+    glm::vec3 dirToNode = (dist > 1e-4f) ? toNode / dist : glm::vec3(0.0f, 1.0f, 0.0f);
 
-    const float totalImportance = importanceLeft + importanceRight;
-    if (totalImportance <= 0.0f) {
-        return -1;
+    // theta_u: angle of cone covering bounding box from shading point
+    float thetaU = (dist > 1e-4f) ? std::atan(boundingRadius / dist) : static_cast<float>(M_PI);
+    thetaU = std::min(thetaU, static_cast<float>(M_PI));
+
+    // theta_i: incident angle from shading point normal to cluster center
+    float cosThetaI = glm::dot(shadingNormal, dirToNode);
+    float thetaI = std::acos(glm::clamp(cosThetaI, -1.0f, 1.0f));
+
+    // theta_i' = max(theta_i - theta_u, 0)
+    float thetaIPrime = std::max(thetaI - thetaU, 0.0f);
+
+    // theta: angle between cluster orientation axis and direction to shading point
+    float cosTheta = glm::dot(node.orientationBounds.axis, -dirToNode);
+    float theta = std::acos(glm::clamp(cosTheta, -1.0f, 1.0f));
+
+    // theta' = max(theta - theta_o - theta_u, 0)
+    float thetaPrime = std::max(
+        theta - node.orientationBounds.thetaO - thetaU,
+        0.0f
+    );
+
+    // Check if emission is within profile
+    float orientationFactor = 0.0f;
+    if (thetaPrime < node.orientationBounds.thetaE) {
+        orientationFactor = std::cos(thetaPrime);
     }
 
-    // calculate probabilities
+    // Incident angle factor
+    float incidentFactor = std::abs(std::cos(thetaIPrime));
 
-    // traverse and update PDF
-    if (float probLeft = importanceLeft / totalImportance; u < probLeft) {
-        outPdf *= probLeft;
-        float newU = (probLeft > 0.0f) ? u / probLeft : 0.0f;
-        return selectBVHNodeWithVisibility(node.leftChild, shadingPoint, newU, outPdf);
-    } else {
-        float probRight = 1.0f - probLeft;
-        outPdf *= probRight;
-        float newU = (probRight > 0.0f) ? (u - probLeft) / probRight : 0.0f;
-        return selectBVHNodeWithVisibility(node.rightChild, shadingPoint, newU, outPdf);
+    // Base geometric importance (Equation 3)
+    float geometricImportance = (incidentFactor * orientationFactor * node.totalFlux) / distSq;
+
+    // Query visibility probability
+    float visibilityProb = 1.0f;
+    if (m_config.enableVisibilityLearning && m_visCache) {
+        visibilityProb = m_visCache->queryVisibility(shadingPoint, nodeIndex);
+
+        // Confidence-based blending
+        if (auto* cell = m_visCache->getCell(shadingPoint)) {
+            if (const auto* nodeVis = cell->getNodeStats(nodeIndex)) {
+                uint32_t samples = nodeVis->totalSamples.load(std::memory_order_relaxed);
+
+                if (samples < static_cast<uint32_t>(m_config.minSamplesForLearning)) {
+                    float observedProb = nodeVis->getVisibilityProbability();
+                    float uncertainty = 1.0f / std::sqrt(1.0f + static_cast<float>(samples));
+                    visibilityProb = std::min(observedProb + uncertainty, 1.0f);
+                }
+            }
+        }
     }
+
+    // Combine geometric and visibility importance
+    float importance = geometricImportance *
+                      glm::mix(1.0f, visibilityProb, m_config.visibilityWeight);
+
+    return std::max(importance, 0.0f);
 }
 
-float VisibilityAwareHierarchicalSampler::calculateNodeImportance(
+bool VisibilityAwareHierarchicalSampler::shouldSplit(
+    int nodeIndex,
+    const glm::vec3& shadingPoint,
+    int currentDepth) const {
+
+    if (!m_config.enableAdaptiveSplitting) {
+        return false;
+    }
+
+    if (currentDepth >= m_config.maxSplitDepth) {
+        return false;
+    }
+
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(m_light->m_bvhNodes.size())) {
+        return false;
+    }
+
+    const auto& node = m_light->m_bvhNodes[nodeIndex];
+    if (node.isLeaf) {
+        return false;
+    }
+
+    float varianceScore = computeSplitVarianceScore(nodeIndex, shadingPoint);
+
+    // Remap to [0,1] using fourth root as in paper
+    float normalizedScore = std::pow(1.0f / (1.0f + varianceScore), 0.25f);
+
+    // slit if variance is high (normalized score is low)
+    return normalizedScore < (1.0f - m_config.splitThreshold);
+}
+
+float VisibilityAwareHierarchicalSampler::computeSplitVarianceScore(
     int nodeIndex,
     const glm::vec3& shadingPoint) const {
 
@@ -181,43 +322,228 @@ float VisibilityAwareHierarchicalSampler::calculateNodeImportance(
 
     const auto& node = m_light->m_bvhNodes[nodeIndex];
 
-    // 1. calculate geometric importance (flux / distance^2)
-    const glm::vec3 toNode = node.getCentroid() - shadingPoint;
-    float distSq = glm::dot(toNode, toNode);
-    distSq = std::max(distSq, 1e-4f); // Avoid division by zero
+    // distance range to cluster (a, b)
+    glm::vec3 toCenter = node.getCentroid() - shadingPoint;
+    float centerDist = glm::length(toCenter);
+    float radius = node.getBoundingSphereRadius();
 
-    float geometricImportance = node.totalFlux / distSq;
+    float a = std::max(centerDist - radius, 1e-4f);
+    float b = centerDist + radius;
 
-    // 2. query visibility probability if enabled
-    float visibilityProb = 1.0f;
-    if (m_config.enableVisibilityLearning && m_visCache) {
-        visibilityProb = m_visCache->queryVisibility(shadingPoint, nodeIndex);
+    // variance of geometric term 1/d^2
+    float E_g = 1.0f / (a * b);
 
-        // only use visibility if we have enough samples
-        if (auto* cell = m_visCache->getCell(shadingPoint)) {
-            if (const auto* nodeVis = cell->getNodeStats(nodeIndex)) {
-                if (const uint32_t samples = nodeVis->totalSamples.load(std::memory_order_relaxed); samples < static_cast<uint32_t>(m_config.minSamplesForLearning)) {
-                    // blend toward optimistic estimate
-                    const float confidence = static_cast<float>(samples) /
-                                     static_cast<float>(m_config.minSamplesForLearning);
-                    visibilityProb = visibilityProb * confidence + 1.0f * (1.0f - confidence);
-                }
-            }
-        }
+    float range = b - a;
+    float E_g2 = (range > 1e-6f)
+        ? (b*b*b - a*a*a) / (3.0f * range * a*a*a * b*b*b)
+        : E_g * E_g;
+
+    float V_g = std::max(E_g2 - E_g * E_g, 0.0f);
+
+    // flux variance
+    float V_e = node.fluxVariance;
+    int numTris = node.isLeaf ? static_cast<int>(node.triangleIndices.size()) : 1;
+    float E_e = node.totalFlux / std::max(static_cast<float>(numTris), 1.0f);
+
+    // total variance (Equation 10)
+    int N = std::max(numTris, 1);
+    float variance = (V_e * V_g + V_e * E_g * E_g + E_e * E_e * V_g) * static_cast<float>(N * N);
+
+    return variance;
+}
+
+VisibilityAwareHierarchicalSampler::TraversalResult
+VisibilityAwareHierarchicalSampler::traverseWithAdaptiveSplitting(
+    int nodeIndex,
+    const glm::vec3& shadingPoint,
+    const glm::vec3& shadingNormal,
+    float u,
+    int depth,
+    std::vector<int>& outTraversalPath) const {
+
+    TraversalResult result;
+
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(m_light->m_bvhNodes.size())) {
+        return result;
     }
 
-    // 3. combine geometric and visibility importance
-    float importance = geometricImportance *
-                      glm::mix(1.0f, visibilityProb, m_config.visibilityWeight);
+    // record this node in traversal path
+    outTraversalPath.push_back(nodeIndex);
 
-    return importance;
+    const auto& node = m_light->m_bvhNodes[nodeIndex];
+
+    // base case: leaf node
+    if (node.isLeaf) {
+        result.leafNodeIndex = nodeIndex;
+        result.pathPdf = 1.0f;
+        return result;
+    }
+
+    // validate children
+    if (node.leftChild < 0 || node.rightChild < 0 ||
+        node.leftChild >= static_cast<int>(m_light->m_bvhNodes.size()) ||
+        node.rightChild >= static_cast<int>(m_light->m_bvhNodes.size())) {
+        return result;
+    }
+
+    // check if we should split
+    if (shouldSplit(nodeIndex, shadingPoint, depth)) {
+        // sample BOTH children
+        std::vector<int> leftPath, rightPath;
+        leftPath.reserve(16);
+        rightPath.reserve(16);
+
+        auto leftResult = traverseWithAdaptiveSplitting(
+            node.leftChild, shadingPoint, shadingNormal, u, depth + 1, leftPath);
+        auto rightResult = traverseWithAdaptiveSplitting(
+            node.rightChild, shadingPoint, shadingNormal,
+            std::fmod(u + 0.5f, 1.0f), depth + 1, rightPath);
+
+        // merge paths into main path
+        outTraversalPath.insert(outTraversalPath.end(), leftPath.begin(), leftPath.end());
+        outTraversalPath.insert(outTraversalPath.end(), rightPath.begin(), rightPath.end());
+
+        // collect all leaves from both branches
+        float leftImportance = calculateNodeImportance(node.leftChild, shadingPoint, shadingNormal);
+        float rightImportance = calculateNodeImportance(node.rightChild, shadingPoint, shadingNormal);
+        float totalImportance = leftImportance + rightImportance;
+
+        if (totalImportance <= 0.0f) {
+            return result;
+        }
+
+        if (leftResult.leafNodeIndex >= 0) {
+            result.sampledLeaves.emplace_back(
+                leftResult.leafNodeIndex,
+                leftImportance
+            );
+        }
+        for (const auto& leaf : leftResult.sampledLeaves) {
+            result.sampledLeaves.emplace_back(leaf.first, leftImportance * leaf.second);
+        }
+
+        if (rightResult.leafNodeIndex >= 0) {
+            result.sampledLeaves.emplace_back(
+                rightResult.leafNodeIndex,
+                rightImportance
+            );
+        }
+        for (const auto& leaf : rightResult.sampledLeaves) {
+            result.sampledLeaves.emplace_back(leaf.first, rightImportance * leaf.second);
+        }
+
+        return result;
+    }
+
+    // Stochastic traversal (no split)
+    float importanceLeft = calculateNodeImportance(node.leftChild, shadingPoint, shadingNormal);
+    float importanceRight = calculateNodeImportance(node.rightChild, shadingPoint, shadingNormal);
+
+    float totalImportance = importanceLeft + importanceRight;
+    if (totalImportance <= 0.0f) {
+        return result;
+    }
+
+    float probLeft = importanceLeft / totalImportance;
+
+    if (u < probLeft) {
+        result = traverseWithAdaptiveSplitting(
+            node.leftChild, shadingPoint, shadingNormal,
+            (probLeft > 0.0f) ? u / probLeft : 0.0f,
+            depth + 1, outTraversalPath
+        );
+        result.pathPdf *= probLeft;
+    } else {
+        float probRight = 1.0f - probLeft;
+        result = traverseWithAdaptiveSplitting(
+            node.rightChild, shadingPoint, shadingNormal,
+            (probRight > 0.0f) ? (u - probLeft) / probRight : 0.0f,
+            depth + 1, outTraversalPath
+        );
+        result.pathPdf *= probRight;
+    }
+
+    return result;
+}
+
+int VisibilityAwareHierarchicalSampler::selectBVHNodeStochastic(
+    int nodeIndex,
+    const glm::vec3& shadingPoint,
+    const glm::vec3& shadingNormal,
+    float u,
+    float& outPdf,
+    std::vector<int>& outTraversalPath) const {
+
+    if (nodeIndex < 0 || nodeIndex >= static_cast<int>(m_light->m_bvhNodes.size())) {
+        return -1;
+    }
+
+    outTraversalPath.push_back(nodeIndex);
+
+    const auto& node = m_light->m_bvhNodes[nodeIndex];
+
+    if (node.isLeaf) {
+        return nodeIndex;
+    }
+
+    if (node.leftChild < 0 || node.rightChild < 0) {
+        return -1;
+    }
+
+    float importanceLeft = calculateNodeImportance(node.leftChild, shadingPoint, shadingNormal);
+    float importanceRight = calculateNodeImportance(node.rightChild, shadingPoint, shadingNormal);
+
+    float totalImportance = importanceLeft + importanceRight;
+    if (totalImportance <= 0.0f) {
+        return -1;
+    }
+
+    float probLeft = importanceLeft / totalImportance;
+
+    if (u < probLeft) {
+        outPdf *= probLeft;
+        float newU = (probLeft > 0.0f) ? u / probLeft : 0.0f;
+        return selectBVHNodeStochastic(
+            node.leftChild, shadingPoint, shadingNormal, newU, outPdf, outTraversalPath);
+    } else {
+        float probRight = 1.0f - probLeft;
+        outPdf *= probRight;
+        float newU = (probRight > 0.0f) ? (u - probLeft) / probRight : 0.0f;
+        return selectBVHNodeStochastic(
+            node.rightChild, shadingPoint, shadingNormal, newU, outPdf, outTraversalPath);
+    }
+}
+
+void VisibilityAwareHierarchicalSampler::recordVisibilitySample(
+    const glm::vec3& shadingPoint,
+    int nodeIndex,
+    bool wasVisible) {
+
+    if (m_config.enableVisibilityLearning && m_visCache) {
+        m_visCache->recordVisibility(shadingPoint, nodeIndex, wasVisible);
+    }
+}
+
+void VisibilityAwareHierarchicalSampler::recordTraversalVisibility(
+    const glm::vec3& shadingPoint,
+    const std::vector<int>& traversalPath,
+    bool wasVisible) {
+
+    if (!m_config.enableVisibilityLearning || !m_visCache) {
+        return;
+    }
+
+    // record visibility for ALL nodes in the traversal path
+    for (int nodeIndex : traversalPath) {
+        m_visCache->recordVisibility(shadingPoint, nodeIndex, wasVisible);
+    }
 }
 
 float VisibilityAwareHierarchicalSampler::evaluatePdf(
     const glm::vec3& shadingPoint,
     const glm::vec3& lightPoint) const {
 
-    // find which triangle contains the point
+    // Find which triangle contains the point
     size_t triangleIndex = m_light->m_triangles.size();
     for (size_t i = 0; i < m_light->m_triangles.size(); ++i) {
         const auto& tri = m_light->m_triangles[i];
@@ -232,18 +558,7 @@ float VisibilityAwareHierarchicalSampler::evaluatePdf(
         return 0.0f;
     }
 
-    // traverse BVH to compute hierarchical PDF
     return m_light->computeHierarchicalPdfForTriangle(
         triangleIndex, shadingPoint, lightPoint
     );
-}
-
-void VisibilityAwareHierarchicalSampler::recordVisibilitySample(
-    const glm::vec3& shadingPoint,
-    int nodeIndex,
-    bool wasVisible) {
-
-    if (m_config.enableVisibilityLearning && m_visCache) {
-        m_visCache->recordVisibility(shadingPoint, nodeIndex, wasVisible);
-    }
 }

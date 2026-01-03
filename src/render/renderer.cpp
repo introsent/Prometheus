@@ -418,7 +418,7 @@ void Renderer::setAreaLightStrategy(SceneManager& scene, SamplingStrategy strate
 }
 
 void Renderer::createTestFolder() {
-    // create a timestamp for the folder name
+    // Create a timestamp for the folder name
     auto now = std::chrono::system_clock::now();
     auto in_time_t = std::chrono::system_clock::to_time_t(now);
     std::tm tm_buf;
@@ -430,17 +430,15 @@ void Renderer::createTestFolder() {
 #endif
 
     std::ostringstream folderName;
-    folderName << "area_light_test_";
     folderName << std::put_time(&tm_buf, "%Y%m%d_%H%M%S");
 
-    m_testFolder = folderName.str();
+    // Create scene-based directory structure
+    m_testFolder = "tests/" + m_sceneName + "/" + m_strategyName + "/" + folderName.str();
 
     // create the directory
     try {
-        if (!std::filesystem::exists(m_testFolder)) {
-            std::filesystem::create_directory(m_testFolder);
-            std::cout << "Created test folder: " << m_testFolder << std::endl;
-        }
+        std::filesystem::create_directories(m_testFolder);
+        std::cout << "Created test folder: " << m_testFolder << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Failed to create test folder: " << e.what() << std::endl;
         m_testFolder = ".";  // fall back to current directory
@@ -606,15 +604,15 @@ void Renderer::renderSceneIntoBuffer(const Camera& camera, const SceneManager& s
                                 const Ray shadowRay{hit.origin, lightDir, 0.0001f, dist - 0.0001f};
                                 bool wasVisible = !tracer.isOccluded(shadowRay);
 
-                                if (meshLight->getVisibilitySampler()) {
-                                    int sampledNode = meshLight->getLastSampledNode();
-                                    meshLight->getVisibilitySampler()->recordVisibilitySample(
-                                        hit.origin, sampledNode, wasVisible
+                                if (meshLight->getVisibilitySampler() && !lightSample.traversalPath.empty()) {
+                                    meshLight->getVisibilitySampler()->recordTraversalVisibility(
+                                        hit.origin,
+                                        lightSample.traversalPath,
+                                        wasVisible
                                     );
                                 }
 
                                 if (!wasVisible) continue;
-
                                 const glm::vec3 brdf = mat->shade(hit.origin, hit.normal, viewDir, lightDir);
 
                                 // compute geometric term: G(x,y) = cos(θ_x) * cos(θ_y) / r^2
@@ -757,14 +755,15 @@ void Renderer::generateGroundTruth(const Camera& camera, SceneManager& scene,
                                    SamplingStrategy samplerStrategy, int samples,
                                    const std::string& outDir) {
     try {
-        // create outDir if necessary
-        if (!std::filesystem::exists(outDir)) {
-            std::filesystem::create_directories(outDir);
-        }
+        // Create outDir if necessary
+        std::filesystem::create_directories(outDir);
     } catch (const std::exception& e) {
         std::cerr << "Failed to create ground truth directory: " << e.what() << std::endl;
         return;
     }
+
+    // Update m_groundTruthDir to be scene-specific
+    m_groundTruthDir = "tests/" + m_sceneName + "/ground_truth";
 
     std::cout << "Generating ground truth (" << samples << " samples) using strategy: ";
     switch (samplerStrategy) {
@@ -774,7 +773,6 @@ void Renderer::generateGroundTruth(const Camera& camera, SceneManager& scene,
         case SamplingStrategy::VisibilityAwareHierarchical: std::cout << "VisibilityAware\n"; break;
         default: std::cout << "Unknown\n"; break;
     }
-
     // save current strategy to restore later
     SamplingStrategy oldStrategy = m_currentStrategy;
 
