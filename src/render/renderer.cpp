@@ -183,6 +183,8 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
     /// GROUND TRUTH HANDLING
     // if test mode and ground truth not computed yet -> try to load it from disk first
     if (m_testMode && !m_groundTruthComputed) {
+        m_groundTruthDir = "tests/" + m_sceneName + "/ground_truth";
+
         // ensure ground-truth dir exists
         try {
             if (!std::filesystem::exists(m_groundTruthDir)) {
@@ -754,6 +756,8 @@ bool Renderer::loadRawBuffer(std::vector<uint32_t>& pixels,
 void Renderer::generateGroundTruth(const Camera& camera, SceneManager& scene,
                                    SamplingStrategy samplerStrategy, int samples,
                                    const std::string& outDir) {
+
+    m_groundTruthSamples = samples;
     try {
         // Create outDir if necessary
         std::filesystem::create_directories(outDir);

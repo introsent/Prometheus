@@ -709,14 +709,28 @@ int main(int argc, char* argv[])
         // Generate ground truth with scene-specific path
         std::string gtDir = "tests/" + sceneName + "/ground_truth";
         std::cout << "Generating canonical ground truth into: " << gtDir << std::endl;
-        pRenderer->generateGroundTruth(*pCamera, *pScene,
-                                       SamplingStrategy::Uniform,
-                                       /*samples=*/20000,
+        if (sceneName == "flux") {
+            pRenderer->generateGroundTruth(*pCamera, *pScene,
+                                       SamplingStrategy::HierarchicalFlux,
+                                       /*samples=*/2000,
                                        gtDir);
+        } else if (sceneName == "occlusion") {
+            pRenderer->generateGroundTruth(*pCamera, *pScene,
+                                      SamplingStrategy::VisibilityAwareHierarchical,
+                                      /*samples=*/2000,
+                                      gtDir);
+        }
+        else {
+            pRenderer->generateGroundTruth(*pCamera, *pScene,
+                                      SamplingStrategy::Uniform,
+                                      /*samples=*/20000,
+                                      gtDir);
+        }
+
         return 0; // exit after GT
     }
 
-    MISValidation::runAllTests();
+    //MISValidation::runAllTests();
 
     if (testMode) {
         std::cout << "\n==================================" << std::endl;
