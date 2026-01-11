@@ -241,7 +241,7 @@ void Renderer::render(const Camera& camera, const SceneManager& scene) {
     }
 
     /// MAIN RENDER
-    int areaLightSamples = m_testMode ? m_currentSamples : 32;
+    int areaLightSamples = m_testMode ? m_currentSamples : 512;
 
     if (m_testMode) {
         MeshAreaLight::clearVisibilityCache();
@@ -627,7 +627,17 @@ void Renderer::renderSceneIntoBuffer(const Camera& camera, const SceneManager& s
                                 float misWeight = 1.0f;
                                 if (mat->getType() == MaterialType::CookTorrence) {
                                     float lightPdfSolidAngle = lightSample.pdf * distSq / cosTheta_light;
-                                    float bsdfPdf = BSDFSampler::pdfDiffuse(hit.normal, lightDir);
+
+                                    // use correct BSDF PDF based on material properties
+                                    float bsdfPdf;
+                                    auto* ctMat = dynamic_cast<const Material_CookTorrence*>(mat);
+                                    if (ctMat->metalness > 0.5f || ctMat->roughness < 0.5f) {
+                                        // glossy/metal: use GGX PDF
+                                        bsdfPdf = BSDFSampler::pdfGGX(hit.normal, viewDir, lightDir, ctMat->roughness);
+                                    } else {
+                                        // rough dielectric: use diffuse PDF
+                                        bsdfPdf = BSDFSampler::pdfDiffuse(hit.normal, lightDir);
+                                    }
 
                                     misWeight = MISWeightCalculator::calculateWeight(
                                         lightPdfSolidAngle, bsdfPdf, MISHeuristic::Balance);
@@ -641,11 +651,21 @@ void Renderer::renderSceneIntoBuffer(const Camera& camera, const SceneManager& s
 
                             // Strategy 2: BSDF sampling (if supported)
                             if (mat->getType() == MaterialType::CookTorrence) {
+                                auto* ctMat = dynamic_cast<const Material_CookTorrence*>(mat);
                                 for (int s = 0; s < areaLightSamples; ++s) {
                                     const float u1 = rng.get();
                                     const float u2 = rng.get();
 
-                                    BSDFSample bsdfSample = BSDFSampler::sampleDiffuse(hit.normal, u1, u2);
+                                    BSDFSample bsdfSample;
+                                    // choose sampling strategy based on material properties
+                                    if (ctMat->metalness > 0.5f || ctMat->roughness < 0.5f) {
+                                        // glossy/metal: use GGX sampling
+                                        bsdfSample = BSDFSampler::sampleGGX(
+                                            hit.normal, viewDir, ctMat->roughness, u1, u2);
+                                    } else {
+                                        // rough dielectric: use diffuse sampling
+                                        bsdfSample = BSDFSampler::sampleDiffuse(hit.normal, u1, u2);
+                                    }
                                     if (bsdfSample.pdf <= 0.0f) continue;
 
                                     const Ray bsdfRay{hit.origin, bsdfSample.direction, 0.0001f, 1000.0f};
@@ -807,6 +827,4 @@ void Renderer::generateGroundTruth(const Camera& camera, SceneManager& scene,
     // restore previous sampling strategy
     setAreaLightStrategy(scene, oldStrategy);
 }
-
-
 

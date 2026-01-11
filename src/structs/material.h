@@ -8,7 +8,7 @@
 #include "glm/vec3.hpp"
 #include <algorithm>
 #include <cmath>
-
+#include "material.h"
 #include "glm/geometric.hpp"
 
 #ifndef PI

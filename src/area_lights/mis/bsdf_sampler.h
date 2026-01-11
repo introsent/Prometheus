@@ -58,7 +58,75 @@ public:
         return cosTheta / glm::pi<float>();
     }
 
+    // Sample GGX distribution for specular materials
+    static BSDFSample sampleGGX(
+        const glm::vec3& normal,
+        const glm::vec3& viewDir,
+        float roughness,
+        float u1, float u2) {
+
+        BSDFSample sample{};
+
+        float alpha = roughness * roughness;
+
+        // sample half-vector from GGX distribution
+        float phi = 2.0f * glm::pi<float>() * u1;
+        float cosTheta = std::sqrt((1.0f - u2) / (1.0f + (alpha * alpha - 1.0f) * u2));
+        float sinTheta = std::sqrt(1.0f - cosTheta * cosTheta);
+
+        // half-vector in local space
+        glm::vec3 hLocal(
+            sinTheta * std::cos(phi),
+            sinTheta * std::sin(phi),
+            cosTheta
+        );
+
+        // transform to world space
+        glm::vec3 h = alignWithNormal(hLocal, normal);
+
+        // reflect view direction around half-vector to get light direction
+        sample.direction = glm::reflect(-viewDir, h);
+
+        // check if direction is valid (above surface)
+        float NdotL = glm::dot(normal, sample.direction);
+        if (NdotL <= 0.0f) {
+            sample.pdf = 0.0f;
+            return sample;
+        }
+
+        float NdotH = std::max(glm::dot(normal, h), 0.0f);
+        float VdotH = std::max(glm::dot(viewDir, h), 0.0f);
+
+        // GGX PDF: D(h) * NdotH / (4 * VdotH)
+        float D = normalDistributionGGX(normal, h, roughness);
+        sample.pdf = (D * NdotH) / (4.0f * VdotH + 1e-6f);
+
+        return sample;
+    }
+
+    static float pdfGGX(
+        const glm::vec3& normal,
+        const glm::vec3& viewDir,
+        const glm::vec3& lightDir,
+        float roughness) {
+
+        glm::vec3 h = glm::normalize(viewDir + lightDir);
+
+        float NdotH = std::max(glm::dot(normal, h), 0.0f);
+        float VdotH = std::max(glm::dot(viewDir, h), 0.0f);
+
+        float D = normalDistributionGGX(normal, h, roughness);
+        return (D * NdotH) / (4.0f * VdotH + 1e-6f);
+    }
 private:
+    static float normalDistributionGGX(const glm::vec3& n, const glm::vec3& h, float roughness) {
+        const float alpha = roughness * roughness;
+        const float alphaSq = alpha * alpha;
+        const float nDotH = glm::dot(n, h);
+        const float denom = nDotH * nDotH * (alphaSq - 1.0f) + 1.0f;
+        return alphaSq / (glm::pi<float>() * denom * denom);
+    }
+
     // cosine-weighted hemisphere sampling
     // returns direction in local space (z+ is up)
     static glm::vec3 cosineSampleHemisphere(float u1, float u2) {

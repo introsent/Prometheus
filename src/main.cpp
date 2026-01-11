@@ -621,7 +621,7 @@ int main(int argc, char* argv[])
     bool genGroundTruth = false;
     bool testMode = false;
     std::string strategyStr = "vis";
-    std::string sceneName = "occlusion"; // Default scene
+    std::string sceneName = "bunny"; // Default scene
 
     // Parse command line arguments
     for (int i = 1; i < argc; ++i) {
